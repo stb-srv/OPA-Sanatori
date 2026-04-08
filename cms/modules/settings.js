@@ -1,5 +1,5 @@
 /**
- * Settings Module for Grieche-CMS
+ * Settings Module for OPA-CMS
  */
 
 import { apiGet, apiPost } from './api.js';
@@ -13,6 +13,7 @@ export async function renderSettings(container, titleEl) {
     const settings = await apiGet('settings') || {};
     const branding = await apiGet('branding') || {};
     const users = await apiGet('users') || [];
+    const licInfo = await apiGet('license/info') || {};
 
     container.innerHTML = `
         <div class="glass-panel" style="padding:40px;">
@@ -25,38 +26,115 @@ export async function renderSettings(container, titleEl) {
             </div>
 
             <div id="settings-content">
-                ${renderSettingsTab(settings, branding, users)}
+                ${renderSettingsTab(settings, branding, users, licInfo)}
             </div>
-            
-            <div style="display:flex; justify-content:flex-end; margin-top:30px;">
+
+            <div id="settings-save-bar" style="display:${settingsTab === 'license' ? 'none' : 'flex'}; justify-content:flex-end; margin-top:30px;">
                 <button class="btn-primary" id="save-settings"><i class="fas fa-save"></i> Einstellungen speichern</button>
             </div>
         </div>
     `;
 
-    attachSettingsHandlers(container, settings, branding, users, titleEl);
+    attachSettingsHandlers(container, settings, branding, users, licInfo, titleEl);
 }
 
-function renderSettingsTab(settings, branding, users) {
+function renderSettingsTab(settings, branding, users, licInfo) {
     if (settingsTab === 'license') {
         const l = settings.license || {};
+        const isTrial = l.isTrial || l.status === 'trial';
+        const isActive = l.status === 'active';
+        const expiresAt = l.expiresAt ? new Date(l.expiresAt) : null;
+        const daysLeft = expiresAt ? Math.ceil((expiresAt - new Date()) / (1000 * 60 * 60 * 24)) : null;
+        const expired = daysLeft !== null && daysLeft <= 0;
+
+        // Status Badge
+        let badgeColor = '#6b7280', badgeText = 'Unbekannt';
+        if (isTrial && !expired)  { badgeColor = '#f59e0b'; badgeText = `Trial • noch ${daysLeft} Tage`; }
+        if (isTrial && expired)   { badgeColor = '#ef4444'; badgeText = 'Trial abgelaufen'; }
+        if (isActive)             { badgeColor = '#10b981'; badgeText = 'Aktiv'; }
+
+        // Plan features
+        const plans = licInfo.plans || {};
+        const planKeys = Object.keys(plans);
+
         return `
-            <div class="form-grid">
-                <div class="form-group full">
-                    <div style="background:rgba(37,99,235,.05); border:1px solid rgba(37,99,235,.1); border-radius:12px; padding:24px; display:flex; align-items:center; gap:20px;">
-                        <div style="width:60px;height:60px;background:var(--primary);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.5rem;"><i class="fas fa-shield-alt"></i></div>
-                        <div>
-                            <h3 style="margin-bottom:2px;">Oktagon Hub | ${l.status || 'Aktiv'}</h3>
-                            <p style="color:var(--text-muted); font-size:.85rem;">Lizenz-Key: <code>${l.key || 'N/A'}</code> • Typ: <strong>${l.type || 'PRO'}</strong></p>
+            <!-- Aktueller Status -->
+            <div style="background:rgba(37,99,235,.05); border:1px solid rgba(37,99,235,.15); border-radius:12px; padding:24px; margin-bottom:28px;">
+                <div style="display:flex; align-items:center; gap:20px; flex-wrap:wrap;">
+                    <div style="width:56px;height:56px;background:var(--primary);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.4rem;flex-shrink:0;">
+                        <i class="fas fa-shield-alt"></i>
+                    </div>
+                    <div style="flex:1;">
+                        <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;">
+                            <h3 style="margin:0;">OPA! Santorini CMS</h3>
+                            <span style="background:${badgeColor}22; color:${badgeColor}; border:1px solid ${badgeColor}44; border-radius:20px; padding:2px 12px; font-size:.78rem; font-weight:600;">${badgeText}</span>
                         </div>
+                        <p style="color:var(--text-muted); font-size:.85rem; margin:0;">
+                            Plan: <strong>${l.label || l.type || 'FREE'}</strong>
+                            &nbsp;&bull;&nbsp; Inhaber: <strong>${l.customer || '–'}</strong>
+                            &nbsp;&bull;&nbsp; Key: <code style="font-size:.8rem;">${l.key || 'N/A'}</code>
+                        </p>
                     </div>
                 </div>
-                <div class="form-group"><label>Lizenz-Inhaber</label><input class="input-styled" value="${l.customer || 'Admin'}" readonly></div>
-                <div class="form-group"><label>Gültig bis</label><input class="input-styled" value="${l.expiresAt ? new Date(l.expiresAt).toLocaleDateString() : 'Unbegrenzt'}" readonly></div>
+                ${isTrial && !expired ? `
+                <div style="margin-top:16px; padding:12px 16px; background:rgba(245,158,11,.1); border:1px solid rgba(245,158,11,.2); border-radius:8px; font-size:.85rem; color:#f59e0b;">
+                    <i class="fas fa-clock"></i>&nbsp; Ihre Trial-Lizenz läuft in <strong>${daysLeft} Tagen</strong> ab. Aktivieren Sie jetzt einen vollwertigen Plan.
+                </div>` : ''}
+                ${expired ? `
+                <div style="margin-top:16px; padding:12px 16px; background:rgba(239,68,68,.1); border:1px solid rgba(239,68,68,.2); border-radius:8px; font-size:.85rem; color:#ef4444;">
+                    <i class="fas fa-exclamation-triangle"></i>&nbsp; Ihre Lizenz ist abgelaufen. Bitte aktivieren Sie einen neuen Lizenz-Key.
+                </div>` : ''}
+            </div>
+
+            <!-- Lizenz aktivieren -->
+            <div style="background:rgba(16,185,129,.05); border:1px solid rgba(16,185,129,.15); border-radius:12px; padding:24px; margin-bottom:28px;">
+                <h4 style="margin:0 0 16px; display:flex; align-items:center; gap:8px;">
+                    <i class="fas fa-key" style="color:#10b981;"></i> Lizenz aktivieren / wechseln
+                </h4>
+                <p style="color:var(--text-muted); font-size:.85rem; margin-bottom:16px;">
+                    Geben Sie Ihren Lizenz-Key ein um auf einen höheren Plan zu wechseln oder eine abgelaufene Lizenz zu erneuern.
+                </p>
+                <div style="display:flex; gap:12px; flex-wrap:wrap;">
+                    <input id="license-key-input" class="input-styled" style="flex:1; min-width:260px; font-family:monospace; letter-spacing:.05em;"
+                        placeholder="z.B. OPA-XXXX-XXXX-XXXX-XXXX"
+                        value="${isActive ? (l.key || '') : ''}">
+                    <button id="btn-activate-license" class="btn-primary" style="white-space:nowrap;">
+                        <i class="fas fa-check-circle"></i> Lizenz aktivieren
+                    </button>
+                </div>
+                <div id="license-activate-result" style="margin-top:12px;"></div>
+            </div>
+
+            <!-- Plan-Übersicht -->
+            <h4 style="margin-bottom:16px;"><i class="fas fa-th-large"></i> Verfügbare Pläne</h4>
+            <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap:12px;">
+                ${planKeys.map(key => {
+                    const p = plans[key];
+                    const isCurrent = (l.type || 'FREE') === key;
+                    return `
+                    <div style="border:1px solid ${isCurrent ? 'var(--primary)' : 'rgba(255,255,255,0.08)'};
+                        border-radius:10px; padding:16px;
+                        background:${isCurrent ? 'rgba(37,99,235,.08)' : 'rgba(255,255,255,.02)'};
+                        position:relative;">
+                        ${isCurrent ? '<span style="position:absolute;top:8px;right:8px;background:var(--primary);color:#fff;border-radius:10px;padding:1px 8px;font-size:.7rem;">Aktiv</span>' : ''}
+                        <div style="font-weight:700; font-size:1rem; margin-bottom:4px;">${p.label}</div>
+                        <div style="color:var(--text-muted); font-size:.78rem; margin-bottom:10px;">${p.note || ''}</div>
+                        <div style="font-size:.8rem; display:flex; flex-direction:column; gap:3px;">
+                            <span><i class="fas fa-utensils" style="width:14px;"></i> ${p.menu_items} Speisen</span>
+                            <span><i class="fas fa-chair" style="width:14px;"></i> ${p.max_tables} Tische</span>
+                            ${Object.entries(p.modules || {}).map(([mod, on]) =>
+                                `<span style="color:${on ? '#10b981' : '#6b7280'}">
+                                    <i class="fas fa-${on ? 'check' : 'times'}" style="width:14px;"></i>
+                                    ${{ menu_edit:'Speisekarte', orders_kitchen:'Küche', reservations:'Reservierung', custom_design:'Design', analytics:'Statistiken', qr_pay:'QR-Pay' }[mod] || mod}
+                                </span>`
+                            ).join('')}
+                        </div>
+                    </div>`;
+                }).join('')}
             </div>
         `;
     }
-    
+
     if (settingsTab === 'branding') {
         return `
             <div class="form-grid">
@@ -89,17 +167,13 @@ function renderSettingsTab(settings, branding, users) {
     }
 
     if (settingsTab === 'reservations') {
-        const rc = settings.reservationConfig || { 
-            durationSmall: 90, durationMedium: 120, durationLarge: 150, 
-            buffer: 15, allowInquiry: true 
-        };
+        const rc = settings.reservationConfig || { durationSmall: 90, durationMedium: 120, durationLarge: 150, buffer: 15, allowInquiry: true };
         return `
             <div class="form-grid">
                 <div class="form-group full"><h4 style="margin-bottom:10px;">Aufenthaltsdauer (Minuten)</h4></div>
                 <div class="form-group"><label>Bis 2 Personen</label><input id="rc-small" type="number" class="input-styled" value="${rc.durationSmall}"></div>
                 <div class="form-group"><label>Bis 4 Personen</label><input id="rc-medium" type="number" class="input-styled" value="${rc.durationMedium}"></div>
                 <div class="form-group"><label>Ab 5 Personen</label><input id="rc-large" type="number" class="input-styled" value="${rc.durationLarge}"></div>
-                
                 <div class="form-group full" style="border-top:1px solid rgba(255,255,255,0.05); margin-top:20px; padding-top:20px;"><h4 style="margin-bottom:10px;">Sicherheits-Puffer</h4></div>
                 <div class="form-group"><label>Puffer zw. Belegung (Min)</label><input id="rc-buffer" type="number" class="input-styled" value="${rc.buffer}"></div>
                 <div class="form-group">
@@ -119,7 +193,7 @@ function renderSettingsTab(settings, branding, users) {
                 <tbody>
                     ${users.map(u => `
                         <tr>
-                            <td><strong>${u.name}</strong><br><small>${u.user}</small></td>
+                            <td><strong>${u.name || u.user}</strong><br><small>${u.user}</small></td>
                             <td>${u.role}</td>
                             <td style="text-align:right;"><button class="btn-delete" onclick="window.deleteUser('${u.user}')"><i class="fas fa-trash"></i></button></td>
                         </tr>
@@ -132,50 +206,93 @@ function renderSettingsTab(settings, branding, users) {
     return '';
 }
 
-function attachSettingsHandlers(container, settings, branding, users, titleEl) {
-    container.querySelector('#tab-btn-license').onclick = () => { settingsTab = 'license'; renderSettings(container, titleEl); };
-    container.querySelector('#tab-btn-branding').onclick = () => { settingsTab = 'branding'; renderSettings(container, titleEl); };
-    container.querySelector('#tab-btn-visibility').onclick = () => { settingsTab = 'visibility'; renderSettings(container, titleEl); };
+function attachSettingsHandlers(container, settings, branding, users, licInfo, titleEl) {
+    container.querySelector('#tab-btn-license').onclick    = () => { settingsTab = 'license';      renderSettings(container, titleEl); };
+    container.querySelector('#tab-btn-branding').onclick   = () => { settingsTab = 'branding';     renderSettings(container, titleEl); };
+    container.querySelector('#tab-btn-visibility').onclick = () => { settingsTab = 'visibility';   renderSettings(container, titleEl); };
     container.querySelector('#tab-btn-reservations').onclick = () => { settingsTab = 'reservations'; renderSettings(container, titleEl); };
-    container.querySelector('#tab-btn-users').onclick = () => { settingsTab = 'users'; renderSettings(container, titleEl); };
+    container.querySelector('#tab-btn-users').onclick      = () => { settingsTab = 'users';        renderSettings(container, titleEl); };
 
-    container.querySelector('#save-settings').onclick = async () => {
-        if (settingsTab === 'branding') {
-            const b = {
-                name: container.querySelector('#br-name').value,
-                slogan: container.querySelector('#br-slogan').value,
-                phone: container.querySelector('#br-phone').value
-            };
-            const r = await apiPost('branding', b);
-            if (r.success) showToast('Branding gespeichert!');
-        } else if (settingsTab === 'visibility') {
-            const s = { ...settings };
-            s.activeModules = {
-                orders: container.querySelector('#v-orders').checked,
-                reservations: container.querySelector('#v-res').checked
-            };
-            const r = await apiPost('settings', s);
-            if (r.success) {
-                showToast('Ansicht-Einstellungen gespeichert!');
-                updateSidebarVisibility(s);
+    // --- Lizenz aktivieren ---
+    const btnActivate = container.querySelector('#btn-activate-license');
+    if (btnActivate) {
+        btnActivate.onclick = async () => {
+            const key = container.querySelector('#license-key-input').value.trim();
+            const resultEl = container.querySelector('#license-activate-result');
+            if (!key) { showToast('Bitte Lizenz-Key eingeben.', 'error'); return; }
+
+            btnActivate.disabled = true;
+            btnActivate.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Wird geprüft...';
+            resultEl.innerHTML = '';
+
+            const res = await apiPost('license/validate', { key });
+
+            btnActivate.disabled = false;
+            btnActivate.innerHTML = '<i class="fas fa-check-circle"></i> Lizenz aktivieren';
+
+            if (res && res.success) {
+                const lic = res.license;
+                resultEl.innerHTML = `
+                    <div style="padding:12px 16px; background:rgba(16,185,129,.1); border:1px solid rgba(16,185,129,.25); border-radius:8px; color:#10b981; font-size:.88rem;">
+                        <i class="fas fa-check-circle"></i>&nbsp;
+                        <strong>Lizenz aktiviert!</strong> Plan: ${lic.label || lic.type}
+                        &nbsp;&bull;&nbsp; Gültig bis: ${lic.expiresAt ? new Date(lic.expiresAt).toLocaleDateString('de-DE') : 'Unbegrenzt'}
+                    </div>`;
+                showToast('Lizenz erfolgreich aktiviert! 🎉', 'success');
+                setTimeout(() => renderSettings(container, titleEl), 1500);
+            } else {
+                resultEl.innerHTML = `
+                    <div style="padding:12px 16px; background:rgba(239,68,68,.1); border:1px solid rgba(239,68,68,.25); border-radius:8px; color:#ef4444; font-size:.88rem;">
+                        <i class="fas fa-times-circle"></i>&nbsp;
+                        ${res?.reason || 'Lizenz-Key ungültig oder Lizenzserver nicht erreichbar.'}
+                    </div>`;
+                showToast(res?.reason || 'Aktivierung fehlgeschlagen.', 'error');
             }
-        } else if (settingsTab === 'reservations') {
-            const s = { ...settings };
-            s.reservationConfig = {
-                durationSmall: parseInt(container.querySelector('#rc-small').value),
-                durationMedium: parseInt(container.querySelector('#rc-medium').value),
-                durationLarge: parseInt(container.querySelector('#rc-large').value),
-                buffer: parseInt(container.querySelector('#rc-buffer').value),
-                allowInquiry: container.querySelector('#rc-inquiry').checked
-            };
-            const r = await apiPost('settings', s);
-            if (r.success) showToast('Reservierungs-Konfiguration gespeichert!');
-        }
-    };
-    
+        };
+
+        // Enter-Taste im Input
+        container.querySelector('#license-key-input').onkeydown = (e) => {
+            if (e.key === 'Enter') btnActivate.click();
+        };
+    }
+
+    // --- Speichern ---
+    const saveBtn = container.querySelector('#save-settings');
+    if (saveBtn) {
+        saveBtn.onclick = async () => {
+            if (settingsTab === 'branding') {
+                const b = {
+                    name: container.querySelector('#br-name').value,
+                    slogan: container.querySelector('#br-slogan').value,
+                    phone: container.querySelector('#br-phone').value
+                };
+                const r = await apiPost('branding', b);
+                if (r?.success) showToast('Branding gespeichert!');
+            } else if (settingsTab === 'visibility') {
+                const s = { ...settings };
+                s.activeModules = {
+                    orders: container.querySelector('#v-orders').checked,
+                    reservations: container.querySelector('#v-res').checked
+                };
+                const r = await apiPost('settings', s);
+                if (r?.success) { showToast('Ansicht-Einstellungen gespeichert!'); updateSidebarVisibility(s); }
+            } else if (settingsTab === 'reservations') {
+                const s = { ...settings };
+                s.reservationConfig = {
+                    durationSmall:  parseInt(container.querySelector('#rc-small').value),
+                    durationMedium: parseInt(container.querySelector('#rc-medium').value),
+                    durationLarge:  parseInt(container.querySelector('#rc-large').value),
+                    buffer:         parseInt(container.querySelector('#rc-buffer').value),
+                    allowInquiry:   container.querySelector('#rc-inquiry').checked
+                };
+                const r = await apiPost('settings', s);
+                if (r?.success) showToast('Reservierungs-Konfiguration gespeichert!');
+            }
+        };
+    }
+
     window.deleteUser = async (user) => {
         if (await showConfirm('Nutzer löschen?', `Möchten Sie ${user} wirklich entfernen?`)) {
-            // Delete logic...
             showToast(`${user} gelöscht (Demo)`);
         }
     };
