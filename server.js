@@ -9,7 +9,6 @@ const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 const sanitizeHtml = require('sanitize-html');
 
-// --- Central Production Configuration ---
 const CONFIG = require('./config.js');
 const DB = require('./server/database.js');
 const Mailer = require('./server/mailer.js');
@@ -18,19 +17,22 @@ const { getCurrentLicense, PLAN_DEFINITIONS } = require('./server/license.js');
 const app = express();
 const server = require('http').createServer(app);
 const io = require('socket.io')(server);
-// Set to 1 if behind a single reverse proxy (e.g. nginx), or false for local dev without proxy
 app.set('trust proxy', 1);
 const PORT = CONFIG.PORT || 5000;
 const ADMIN_SECRET = CONFIG.ADMIN_SECRET;
 
-// --- CORS: Only allow configured origins ---
-const allowedOrigins = process.env.CORS_ORIGINS
-    ? process.env.CORS_ORIGINS.split(',')
+// --- CORS ---
+const rawOrigins = process.env.CORS_ORIGINS || '';
+const allowedOrigins = rawOrigins
+    ? rawOrigins.split(',').map(o => o.trim()).filter(Boolean)
     : ['http://localhost:3000', 'http://localhost:5000'];
 
 app.use(cors({
     origin: (origin, callback) => {
-        if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+        // Allow requests with no origin (same-origin, server-to-server)
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.includes(origin)) return callback(null, true);
+        console.warn(`CORS blocked: ${origin}`);
         callback(new Error(`CORS blocked: ${origin}`));
     },
     credentials: true
@@ -39,14 +41,11 @@ app.use(express.json());
 
 // --- Rate Limiters ---
 const loginLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 10,
+    windowMs: 15 * 60 * 1000, max: 10,
     message: { success: false, reason: 'Zu viele Login-Versuche. Bitte 15 Minuten warten.' }
 });
-
 const reservationLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 20,
+    windowMs: 15 * 60 * 1000, max: 20,
     message: { success: false, reason: 'Zu viele Anfragen. Bitte später erneut versuchen.' }
 });
 
@@ -61,14 +60,12 @@ app.use((req, res, next) => {
     res.redirect('/setup');
 });
 
-// Ensure storage exists
 if (!fs.existsSync(path.join(__dirname, 'server'))) fs.mkdirSync(path.join(__dirname, 'server'));
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR);
 const PLUGINS_DIR = path.join(__dirname, 'plugins');
 if (!fs.existsSync(PLUGINS_DIR)) fs.mkdirSync(PLUGINS_DIR);
 
-// --- Multer Upload Config ---
 const storage = multer.diskStorage({
     destination: (req, file, cb) => cb(null, UPLOADS_DIR),
     filename: (req, file, cb) => {
@@ -77,22 +74,18 @@ const storage = multer.diskStorage({
     }
 });
 const upload = multer({
-    storage,
-    limits: { fileSize: 5 * 1024 * 1024 },
+    storage, limits: { fileSize: 5 * 1024 * 1024 },
     fileFilter: (req, file, cb) => {
-        const allowed = /\.(jpg|jpeg|png|gif|webp|svg)$/i;
-        if (allowed.test(path.extname(file.originalname))) cb(null, true);
-        else cb(new Error('Nur Bilddateien erlaubt (JPG, PNG, GIF, WEBP, SVG)'));
+        if (/\.(jpg|jpeg|png|gif|webp|svg)$/i.test(path.extname(file.originalname))) cb(null, true);
+        else cb(new Error('Nur Bilddateien erlaubt'));
     }
 });
 
-// --- Input Sanitization Helper ---
 const sanitizeText = (str) => {
     if (!str) return '';
     return sanitizeHtml(String(str), { allowedTags: [], allowedAttributes: {} }).trim();
 };
 
-// --- Reservation Logic Helpers ---
 const calculateDuration = (guestCount, rc = null) => {
     const config = rc || { durationSmall: 90, durationMedium: 120, durationLarge: 150 };
     const count = parseInt(guestCount);
@@ -113,10 +106,9 @@ const parseTime = (timeStr, dateStr = null) => {
 const buildEndTime = (startTime, durationMinutes) => {
     const d = parseTime(startTime);
     d.setMinutes(d.getMinutes() + durationMinutes);
-    const h = d.getHours();
-    const m = d.getMinutes();
+    const h = d.getHours(), m = d.getMinutes();
     if (h >= 24) return '23:59';
-    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
 };
 
 const checkOverlap = (date, start1, end1, start2, end2, buffer = 15) => {
@@ -130,52 +122,36 @@ const checkOverlap = (date, start1, end1, start2, end2, buffer = 15) => {
 const findAvailableTables = (date, startTime, duration, guestCount, areaId = null) => {
     const settings = DB.getKV('settings', {});
     const rc = settings.reservationConfig || { buffer: 15 };
-
     const homepage = DB.getKV('homepage', {});
     const oh = homepage.openingHours || {};
     const d = new Date(date.split('.').reverse().join('-'));
-    const dayKey = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'][d.getDay()];
+    const dayKey = ['So','Mo','Di','Mi','Do','Fr','Sa'][d.getDay()];
     const dayConfig = oh[dayKey];
-
     if (dayConfig) {
         if (dayConfig.closed) return { success: false, reason: `Wir haben am ${dayKey} leider Ruhetag.` };
         const start = parseTime(startTime, date).getTime();
         const open = parseTime(dayConfig.open, date).getTime();
         const close = parseTime(dayConfig.close, date).getTime();
-        if (start < open || start > close) {
+        if (start < open || start > close)
             return { success: false, reason: `Reservierung außerhalb der Öffnungszeiten (${dayConfig.open} - ${dayConfig.close} Uhr).` };
-        }
     }
-
     const endTime = buildEndTime(startTime, duration);
     const tables = DB.getTables() || [];
     let activeTables = tables.filter(t => t.active);
-
     const plan = DB.getKV('table_plan', { combined: {} });
-    const combinedMapping = {};
-    const parentMapping = {};
-
+    const combinedMapping = {}, parentMapping = {};
     Object.values(plan.combined || {}).forEach(areaCombos => {
         areaCombos.forEach(c => {
-            const pid = 'C' + c.id;
-            const tids = c.tableIds || [];
+            const pid = 'C' + c.id, tids = c.tableIds || [];
             parentMapping[pid] = tids;
-            tids.forEach(tid => {
-                if (!combinedMapping[tid]) combinedMapping[tid] = [];
-                combinedMapping[tid].push(pid);
-            });
+            tids.forEach(tid => { if (!combinedMapping[tid]) combinedMapping[tid] = []; combinedMapping[tid].push(pid); });
         });
     });
-
     if (areaId) activeTables = activeTables.filter(t => t.area_id === areaId);
-
-    const blockedStatuses = ['Confirmed', 'Pending', 'Blocked', 'Inquiry'];
+    const blockedStatuses = ['Confirmed','Pending','Blocked','Inquiry'];
     const existingReservations = (DB.getReservations() || []).filter(r =>
-        r.date === date &&
-        blockedStatuses.includes(r.status) &&
-        r.start_time && r.end_time
+        r.date === date && blockedStatuses.includes(r.status) && r.start_time && r.end_time
     );
-
     const unavailableTableIds = new Set();
     existingReservations.forEach(res => {
         if (checkOverlap(date, startTime, endTime, res.start_time, res.end_time, rc.buffer)) {
@@ -186,133 +162,87 @@ const findAvailableTables = (date, startTime, duration, guestCount, areaId = nul
             });
         }
     });
-
     const availableTables = activeTables.filter(t => !unavailableTableIds.has(t.id));
-
-    let fit = availableTables.filter(t => t.capacity >= guestCount).sort((a, b) => a.capacity - b.capacity)[0];
+    let fit = availableTables.filter(t => t.capacity >= guestCount).sort((a,b) => a.capacity - b.capacity)[0];
     if (fit) return { success: true, tables: [fit.id], endTime };
-
-    const combinable = availableTables.filter(t => t.combinable).sort((a, b) => b.capacity - a.capacity);
-    let combinedCapacity = 0;
-    let selectedIds = [];
+    const combinable = availableTables.filter(t => t.combinable).sort((a,b) => b.capacity - a.capacity);
+    let combinedCapacity = 0, selectedIds = [];
     for (const t of combinable) {
-        combinedCapacity += t.capacity;
-        selectedIds.push(t.id);
+        combinedCapacity += t.capacity; selectedIds.push(t.id);
         if (combinedCapacity >= guestCount) return { success: true, tables: selectedIds, endTime };
     }
-
     return { success: false, reason: `Keine Kapazität im Bereich ${areaId || 'Gesamt'} verfügbar` };
 };
 
-// --- Security Middleware ---
 const requireAuth = (req, res, next) => {
     const token = req.headers['x-admin-token'];
     if (!token) return res.status(401).json({ success: false, reason: 'No token' });
-    try {
-        const decoded = jwt.verify(token, ADMIN_SECRET);
-        req.admin = decoded;
-        next();
-    } catch (e) {
-        res.status(401).json({ success: false, reason: 'Invalid session' });
-    }
+    try { req.admin = jwt.verify(token, ADMIN_SECRET); next(); }
+    catch (e) { res.status(401).json({ success: false, reason: 'Invalid session' }); }
 };
 
-// Check if a specific module is enabled in the active license
-const requireLicense = (module) => {
-    return (req, res, next) => {
-        const l = DB.getKV('settings')?.license || {};
-        if (!l.modules || !l.modules[module]) return res.status(403).json({ success: false, reason: `Feature '${module}' gesperrt.` });
-        next();
-    };
+const requireLicense = (module) => (req, res, next) => {
+    const l = DB.getKV('settings')?.license || {};
+    if (!l.modules || !l.modules[module]) return res.status(403).json({ success: false, reason: `Feature '${module}' gesperrt.` });
+    next();
 };
 
-// Check if the menu item count is within the license limit
 const requireMenuLimit = (req, res, next) => {
     const lic = getCurrentLicense(DB);
     const maxDishes = lic.limits?.max_dishes ?? 10;
-    const currentMenu = DB.getMenu() || [];
-
-    // Allow saving if reducing or equal, block only when adding beyond limit
     const incomingItems = Array.isArray(req.body) ? req.body : [];
     if (incomingItems.length > maxDishes) {
         return res.status(403).json({
             success: false,
-            reason: `Ihr ${lic.label || lic.type}-Plan erlaubt maximal ${maxDishes} Speisen. Sie versuchen ${incomingItems.length} zu speichern. Bitte upgraden Sie Ihren Plan.`,
-            limit: maxDishes,
-            current: incomingItems.length,
-            plan: lic.type
+            reason: `Ihr ${lic.label || lic.type}-Plan erlaubt maximal ${maxDishes} Speisen. Bitte upgraden Sie Ihren Plan.`,
+            limit: maxDishes, current: incomingItems.length, plan: lic.type
         });
     }
     next();
 };
 
-// --- API Router ---
+// --- API Routes ---
 app.post('/api/admin/login', loginLimiter, async (req, res) => {
     const { user, pass } = req.body;
     const u = (DB.getUsers() || []).find(x => x.user === user);
     if (!u) return res.status(401).json({ success: false });
-
     let isValid = false;
-    try {
-        isValid = await bcrypt.compare(pass, u.pass);
-    } catch(e) { isValid = false; }
-
+    try { isValid = await bcrypt.compare(pass, u.pass); } catch(e) { isValid = false; }
     if (!isValid && pass === u.pass) {
         isValid = true;
         const hashed = await bcrypt.hash(pass, 10);
         DB.setUserPass(user, hashed);
-        console.log(`🔒 Auto-migrated password for user: ${user}`);
     }
-
     if (isValid) {
         const token = jwt.sign({ user: u.user, role: u.role }, ADMIN_SECRET, { expiresIn: '12h' });
         res.json({ success: true, token, user: u });
-    } else {
-        res.status(401).json({ success: false });
-    }
+    } else res.status(401).json({ success: false });
 });
 
 app.get('/api/users', requireAuth, (req, res) => res.json(DB.getUsers()));
-app.post('/api/users', requireAuth, (req, res) => {
-    DB.saveUsers(req.body); res.json({ success: true });
-});
+app.post('/api/users', requireAuth, (req, res) => { DB.saveUsers(req.body); res.json({ success: true }); });
 
 app.get('/api/menu', (req, res) => res.json(DB.getMenu()));
-app.post('/api/menu', requireAuth, requireLicense('menu_edit'), requireMenuLimit, (req, res) => {
-    DB.saveMenu(req.body); res.json({ success: true });
-});
-
+app.post('/api/menu', requireAuth, requireLicense('menu_edit'), requireMenuLimit, (req, res) => { DB.saveMenu(req.body); res.json({ success: true }); });
 app.get('/api/categories', (req, res) => res.json(DB.getCategories()));
-app.post('/api/categories', requireAuth, (req, res) => {
-    DB.saveCategories(req.body); res.json({ success: true });
-});
-
+app.post('/api/categories', requireAuth, (req, res) => { DB.saveCategories(req.body); res.json({ success: true }); });
 app.get('/api/allergens', (req, res) => res.json(DB.getKV('allergens', {})));
-app.post('/api/allergens', requireAuth, (req, res) => {
-    DB.setKV('allergens', req.body); res.json({ success: true });
-});
-
+app.post('/api/allergens', requireAuth, (req, res) => { DB.setKV('allergens', req.body); res.json({ success: true }); });
 app.get('/api/additives', (req, res) => res.json(DB.getKV('additives', {})));
-app.post('/api/additives', requireAuth, (req, res) => {
-    DB.setKV('additives', req.body); res.json({ success: true });
-});
-
+app.post('/api/additives', requireAuth, (req, res) => { DB.setKV('additives', req.body); res.json({ success: true }); });
 app.get('/api/orders', requireAuth, (req, res) => res.json(DB.getOrders()));
 app.post('/api/orders', reservationLimiter, (req, res) => {
     const newOrder = { ...req.body, id: Date.now().toString(), timestamp: new Date().toISOString(), status: 'pending' };
-    DB.addOrder(newOrder);
-    io.emit('new-order', newOrder);
+    DB.addOrder(newOrder); io.emit('new-order', newOrder);
     res.json({ success: true, order: newOrder });
 });
 
 app.get('/api/reservations', requireAuth, (req, res) => res.json(DB.getReservations()));
-
 app.post('/api/reservations/check', reservationLimiter, (req, res) => {
     const settings = DB.getKV('settings', {});
     const { date, time, guests, areaId } = req.body;
     const duration = calculateDuration(guests, settings.reservationConfig);
-    const result = findAvailableTables(date, time, duration, guests, areaId);
-    res.json(result);
+    res.json(findAvailableTables(date, time, duration, guests, areaId));
 });
 
 app.post('/api/reservations/availability-grid', reservationLimiter, (req, res) => {
@@ -330,47 +260,24 @@ app.post('/api/reservations/availability-grid', reservationLimiter, (req, res) =
 app.post('/api/reservations/submit', reservationLimiter, requireLicense('reservations'), (req, res) => {
     const settings = DB.getKV('settings', {});
     const rc = settings.reservationConfig || { allowInquiry: true };
-
-    const name = sanitizeText(req.body.name);
-    const email = sanitizeText(req.body.email);
-    const phone = sanitizeText(req.body.phone);
-    const date = sanitizeText(req.body.date);
-    const time = sanitizeText(req.body.time);
-    const guests = parseInt(req.body.guests) || 1;
-    const note = sanitizeText(req.body.note);
-    const areaId = sanitizeText(req.body.areaId);
-
+    const name = sanitizeText(req.body.name), email = sanitizeText(req.body.email),
+          phone = sanitizeText(req.body.phone), date = sanitizeText(req.body.date),
+          time = sanitizeText(req.body.time), guests = parseInt(req.body.guests) || 1,
+          note = sanitizeText(req.body.note), areaId = sanitizeText(req.body.areaId);
     const duration = calculateDuration(guests, settings.reservationConfig);
     const result = findAvailableTables(date, time, duration, guests, areaId);
-
-    if (!result.success && !rc.allowInquiry) {
-        return res.status(400).json({ success: false, reason: result.reason });
-    }
-
+    if (!result.success && !rc.allowInquiry) return res.status(400).json({ success: false, reason: result.reason });
     const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
-    if (email && !emailRegex.test(email)) {
-        return res.status(400).json({ success: false, reason: 'Bitte geben Sie eine gültige E-Mail-Adresse ein.' });
-    }
-
+    if (email && !emailRegex.test(email)) return res.status(400).json({ success: false, reason: 'Bitte geben Sie eine gültige E-Mail-Adresse ein.' });
     const status = result.success ? 'Pending' : 'Inquiry';
-    const assignedTables = result.success ? result.tables : [];
-    const endTime = result.endTime || buildEndTime(time, duration);
-
     const newRes = {
-        id: Date.now(),
-        token: crypto.randomBytes(32).toString('hex'),
-        name, email, phone, date,
-        time: time + ' Uhr',
-        start_time: time,
-        end_time: endTime,
-        guests,
-        note: note || '',
-        status,
-        assigned_tables: assignedTables,
+        id: Date.now(), token: crypto.randomBytes(32).toString('hex'),
+        name, email, phone, date, time: time + ' Uhr', start_time: time,
+        end_time: result.endTime || buildEndTime(time, duration),
+        guests, note: note || '', status, assigned_tables: result.success ? result.tables : [],
         submittedAt: new Date().toISOString(),
-        ip: (req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split('.').slice(0, 2).join('.') + '.x.x'
+        ip: (req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split('.').slice(0,2).join('.') + '.x.x'
     };
-
     DB.addReservation(newRes);
     Mailer.sendConfirmation(newRes).catch(e => console.error('Mailer error:', e));
     res.json({ success: true, reservation: newRes, isInquiry: !result.success });
@@ -379,19 +286,14 @@ app.post('/api/reservations/submit', reservationLimiter, requireLicense('reserva
 app.put('/api/reservations/:id', requireAuth, (req, res) => {
     const settings = DB.getKV('settings', {});
     const resId = parseInt(req.params.id);
-    const dbRes = DB.getReservations();
-    const old = dbRes.find(r => r.id === resId);
+    const dbRes = DB.getReservations(), old = dbRes.find(r => r.id === resId);
     if (!old) return res.status(404).json({ success: false });
-
     const update = req.body;
     const criticalChanged = (update.date && old.date !== update.date) ||
                             (update.start_time && old.start_time !== update.start_time) ||
                             (update.guests && old.guests != update.guests);
-
     if (criticalChanged) {
-        const d = update.date || old.date;
-        const t = update.start_time || old.start_time;
-        const g = update.guests || old.guests;
+        const d = update.date || old.date, t = update.start_time || old.start_time, g = update.guests || old.guests;
         const duration = calculateDuration(g, settings.reservationConfig);
         const result = findAvailableTables(d, t, duration, g);
         update.assigned_tables = result.tables || [];
@@ -399,26 +301,17 @@ app.put('/api/reservations/:id', requireAuth, (req, res) => {
         update.time = (update.start_time || old.start_time) + ' Uhr';
         if (!result.success && old.status === 'Confirmed') update.status = 'Pending';
     }
-
     const updated = DB.updateReservation(resId, update);
-    if (updated && update.status && update.status !== old.status) {
+    if (updated && update.status && update.status !== old.status)
         Mailer.sendStatusChange(updated).catch(e => console.error('Status mailer error:', e));
-    }
     res.json({ success: true, reservation: updated });
 });
 
-app.delete('/api/reservations/:id', requireAuth, (req, res) => {
-    DB.deleteReservation(parseInt(req.params.id));
-    res.json({ success: true });
-});
-
-app.post('/api/reservations', requireAuth, (req, res) => {
-    DB.saveReservations(req.body); res.json({ success: true });
-});
+app.delete('/api/reservations/:id', requireAuth, (req, res) => { DB.deleteReservation(parseInt(req.params.id)); res.json({ success: true }); });
+app.post('/api/reservations', requireAuth, (req, res) => { DB.saveReservations(req.body); res.json({ success: true }); });
 
 app.get('/api/reservations/cancel/:token', (req, res) => {
-    const list = DB.getReservations();
-    const r = list.find(x => x.token === req.params.token);
+    const r = (DB.getReservations()||[]).find(x => x.token === req.params.token);
     if (!r) return res.status(404).send('Ungültiger Link.');
     const updated = DB.updateReservation(r.id, { status: 'Cancelled' });
     if (updated) Mailer.sendStatusChange(updated).catch(e => console.error('Cancel mailer error:', e));
@@ -426,8 +319,7 @@ app.get('/api/reservations/cancel/:token', (req, res) => {
 });
 
 app.get('/api/reservations/confirm/:token', (req, res) => {
-    const list = DB.getReservations();
-    const r = list.find(x => x.token === req.params.token);
+    const r = (DB.getReservations()||[]).find(x => x.token === req.params.token);
     if (!r) return res.status(404).send('Ungültiger Link.');
     const updated = DB.updateReservation(r.id, { status: 'Confirmed' });
     if (updated) Mailer.sendStatusChange(updated).catch(e => console.error('Confirm mailer error:', e));
@@ -435,47 +327,26 @@ app.get('/api/reservations/confirm/:token', (req, res) => {
 });
 
 app.get('/api/tables', (req, res) => res.json(DB.getTables()));
-app.post('/api/tables', requireAuth, (req, res) => {
-    DB.saveTables(req.body); res.json({ success: true });
-});
+app.post('/api/tables', requireAuth, (req, res) => { DB.saveTables(req.body); res.json({ success: true }); });
 
 app.get('/api/homepage', (req, res) => {
     const settings = DB.getKV('settings', {});
     res.json({ ...DB.getKV('homepage', {}), activeModules: settings.activeModules });
 });
-app.post('/api/homepage', requireAuth, requireLicense('custom_design'), (req, res) => {
-    DB.setKV('homepage', req.body); res.json({ success: true });
-});
+app.post('/api/homepage', requireAuth, requireLicense('custom_design'), (req, res) => { DB.setKV('homepage', req.body); res.json({ success: true }); });
 
-app.get('/api/areas', (req, res) => {
-    res.json(DB.getKV('areas', [
-        { id: 'main', name: 'Gastraum' },
-        { id: 'terrace', name: 'Terrasse' }
-    ]));
-});
-app.post('/api/areas', requireAuth, (req, res) => {
-    DB.setKV('areas', req.body);
-    res.json({ success: true });
-});
+app.get('/api/areas', (req, res) => res.json(DB.getKV('areas', [{ id:'main',name:'Gastraum' },{ id:'terrace',name:'Terrasse' }])));
+app.post('/api/areas', requireAuth, (req, res) => { DB.setKV('areas', req.body); res.json({ success: true }); });
 
-// --- Table Plan (Visual Planner) ---
 app.get('/api/table-plan', requireAuth, (req, res) => {
     let plan = DB.getKV('table_plan', null);
     if (!plan) {
         const dbTables = DB.getTables() || [];
-        const dbAreas = DB.getKV('areas', [{ id: 'main', name: 'Gastraum' }]);
-        plan = {
-            areas: dbAreas.map(a => ({ id: a.id, name: a.name, icon: a.id === 'terrace' ? '🌿' : '🏠', w: 800, h: 600, locked: false })),
-            tables: {}, combined: {}, decors: {}
-        };
+        const dbAreas = DB.getKV('areas', [{ id:'main',name:'Gastraum' }]);
+        plan = { areas: dbAreas.map(a => ({ id:a.id,name:a.name,icon:a.id==='terrace'?'🌿':'🏠',w:800,h:600,locked:false })), tables:{},combined:{},decors:{} };
         dbAreas.forEach(a => {
-            const areaTables = dbTables.filter(t => (t.area_id || 'main') === a.id);
-            plan.tables[a.id] = areaTables.map((t, i) => ({
-                id: t.id, num: t.name, seats: t.capacity,
-                shape: t.capacity > 4 ? 'rect-h' : 'square',
-                x: 50 + (i % 5) * 120, y: 50 + Math.floor(i / 5) * 120,
-                w: t.capacity > 4 ? 100 : 60, h: 60
-            }));
+            const areaTables = dbTables.filter(t => (t.area_id||'main') === a.id);
+            plan.tables[a.id] = areaTables.map((t,i) => ({ id:t.id,num:t.name,seats:t.capacity,shape:t.capacity>4?'rect-h':'square',x:50+(i%5)*120,y:50+Math.floor(i/5)*120,w:t.capacity>4?100:60,h:60 }));
         });
         DB.setKV('table_plan', plan);
     }
@@ -486,45 +357,28 @@ app.post('/api/table-plan', requireAuth, (req, res) => {
     const plan = req.body;
     DB.setKV('table_plan', plan);
     const allTables = [];
-    Object.keys(plan.tables || {}).forEach(areaId => {
-        (plan.tables[areaId] || []).forEach(t => {
-            if (!t.hidden) allTables.push({ id: t.id, name: t.num, capacity: parseInt(t.seats) || 2, combinable: true, active: true, area_id: areaId });
-        });
+    Object.keys(plan.tables||{}).forEach(areaId => {
+        (plan.tables[areaId]||[]).forEach(t => { if (!t.hidden) allTables.push({ id:t.id,name:t.num,capacity:parseInt(t.seats)||2,combinable:true,active:true,area_id:areaId }); });
     });
-    Object.keys(plan.combined || {}).forEach(areaId => {
-        (plan.combined[areaId] || []).forEach(c => {
-            allTables.push({ id: 'C' + c.id, name: c.num, capacity: parseInt(c.seats) || 4, combinable: false, active: true, area_id: areaId });
-        });
+    Object.keys(plan.combined||{}).forEach(areaId => {
+        (plan.combined[areaId]||[]).forEach(c => { allTables.push({ id:'C'+c.id,name:c.num,capacity:parseInt(c.seats)||4,combinable:false,active:true,area_id:areaId }); });
     });
     DB.saveTables(allTables);
-    if (plan.areas) DB.setKV('areas', plan.areas.map(a => ({ id: a.id, name: a.name })));
+    if (plan.areas) DB.setKV('areas', plan.areas.map(a => ({ id:a.id,name:a.name })));
     res.json({ success: true });
 });
 
 app.get('/api/branding', (req, res) => res.json(DB.getKV('branding', {})));
-app.post('/api/branding', requireAuth, (req, res) => {
-    DB.setKV('branding', req.body); res.json({ success: true });
-});
-
+app.post('/api/branding', requireAuth, (req, res) => { DB.setKV('branding', req.body); res.json({ success: true }); });
 app.get('/api/settings', requireAuth, (req, res) => res.json(DB.getKV('settings', {})));
-app.post('/api/settings', requireAuth, (req, res) => {
-    DB.setKV('settings', req.body); res.json({ success: true });
-});
+app.post('/api/settings', requireAuth, (req, res) => { DB.setKV('settings', req.body); res.json({ success: true }); });
 
 // --- License API ---
-
-// Returns current license info + plan limits for the frontend (CMS)
 app.get('/api/license/info', requireAuth, (req, res) => {
     const lic = getCurrentLicense(DB);
-    const currentMenu = DB.getMenu() || [];
-    res.json({
-        ...lic,
-        menu_items_used: currentMenu.length,
-        plans: PLAN_DEFINITIONS
-    });
+    res.json({ ...lic, menu_items_used: (DB.getMenu()||[]).length, plans: PLAN_DEFINITIONS });
 });
 
-// Validates a key against the remote license server and stores the result locally
 app.post('/api/license/validate', async (req, res) => {
     try {
         const response = await fetch(`${CONFIG.LICENSE_SERVER_URL}/api/v1/validate`, {
@@ -548,13 +402,10 @@ app.post('/api/license/validate', async (req, res) => {
 // --- Image Upload API ---
 app.post('/api/upload', requireAuth, upload.single('image'), (req, res) => {
     if (!req.file) return res.status(400).json({ success: false, reason: 'Keine Datei hochgeladen.' });
-    const url = `/uploads/${req.file.filename}`;
-    res.json({ success: true, url, filename: req.file.filename, size: req.file.size });
+    res.json({ success: true, url: `/uploads/${req.file.filename}`, filename: req.file.filename, size: req.file.size });
 });
-
 app.delete('/api/upload/:filename', requireAuth, (req, res) => {
-    const filename = path.basename(req.params.filename);
-    const fp = path.join(UPLOADS_DIR, filename);
+    const fp = path.join(UPLOADS_DIR, path.basename(req.params.filename));
     if (fs.existsSync(fp)) { fs.unlinkSync(fp); return res.json({ success: true }); }
     res.status(404).json({ success: false });
 });
@@ -564,36 +415,22 @@ const getInstalledPlugins = () => {
     if (!fs.existsSync(PLUGINS_DIR)) return [];
     return fs.readdirSync(PLUGINS_DIR)
         .filter(f => fs.statSync(path.join(PLUGINS_DIR, f)).isDirectory())
-        .map(dir => {
-            const manifestPath = path.join(PLUGINS_DIR, dir, 'plugin.json');
-            if (fs.existsSync(manifestPath)) {
-                try { return JSON.parse(fs.readFileSync(manifestPath)); } catch(e) { return null; }
-            }
-            return null;
-        }).filter(p => p !== null);
+        .map(dir => { try { return JSON.parse(fs.readFileSync(path.join(PLUGINS_DIR, dir, 'plugin.json'))); } catch(e) { return null; } })
+        .filter(Boolean);
 };
 
 app.get('/api/plugins', requireAuth, (req, res) => {
-    const installed = getInstalledPlugins();
-    const dbPlugins = DB.getKV('plugins', []);
-    const result = installed.map(p => {
-        const dbP = dbPlugins.find(x => x.id === p.id);
-        return { ...p, enabled: dbP ? dbP.enabled : false };
-    });
-    res.json(result);
+    const installed = getInstalledPlugins(), dbPlugins = DB.getKV('plugins', []);
+    res.json(installed.map(p => { const dbP = dbPlugins.find(x => x.id === p.id); return { ...p, enabled: dbP ? dbP.enabled : false }; }));
 });
-
 app.post('/api/plugins/toggle', requireAuth, (req, res) => {
     let dbPlugins = DB.getKV('plugins', []);
     const { id, enabled } = req.body;
     const idx = dbPlugins.findIndex(p => p.id === id);
-    if (idx > -1) dbPlugins[idx].enabled = enabled;
-    else dbPlugins.push({ id, enabled });
-    DB.setKV('plugins', dbPlugins);
-    res.json({ success: true });
+    if (idx > -1) dbPlugins[idx].enabled = enabled; else dbPlugins.push({ id, enabled });
+    DB.setKV('plugins', dbPlugins); res.json({ success: true });
 });
 
-// --- Dynamic Plugin Routes ---
 const loadPluginServers = () => {
     const activePlugins = DB.getKV('plugins', []).filter(p => p.enabled);
     activePlugins.forEach(p => {
@@ -602,10 +439,7 @@ const loadPluginServers = () => {
         if (fs.existsSync(serverPath)) {
             try {
                 const pluginServer = require(serverPath);
-                if (typeof pluginServer === 'function') {
-                    pluginServer(app, { DB, requireAuth, requireLicense });
-                    console.log(`🔌 Loaded server logic for: ${safeId}`);
-                }
+                if (typeof pluginServer === 'function') pluginServer(app, { DB, requireAuth, requireLicense });
             } catch(e) { console.error(`❌ Failed to load plugin server (${safeId}):`, e); }
         }
     });
@@ -617,43 +451,100 @@ app.use('/uploads', express.static(UPLOADS_DIR));
 app.use('/admin', express.static(path.join(__dirname, 'cms')));
 app.use('/', express.static(path.join(__dirname, 'menu-app')));
 
-// --- Global Error Handler ---
 app.use((err, req, res, next) => {
     console.error('❌ Server Error:', err);
-    res.status(err.status || 500).json({
-        success: false,
-        reason: err.message || 'Ein interner Serverfehler ist aufgetreten.'
-    });
+    res.status(err.status || 500).json({ success: false, reason: err.message || 'Interner Serverfehler.' });
 });
 
-// --- Setup Wizard Endpoint ---
+// --- Setup Wizard ---
 app.post('/api/setup', async (req, res) => {
     if (CONFIG.SETUP_COMPLETE) return res.status(403).json({ success: false, reason: 'Already configured' });
     try {
-        const { licenseServer, adminSecret, smtp, dbType, dbDetails } = req.body;
+        const { restaurantName, licenseServer, adminSecret, smtp, adminUser, adminPass } = req.body;
+        const licenseServerUrl = licenseServer || 'https://licens-prod.stb-srv.de';
+
+        // --- Auto-generate 30-day trial license ---
+        let trialLicense = null;
+        try {
+            const trialKey = 'OPA-TRIAL-' + crypto.randomBytes(4).toString('hex').toUpperCase() + '-' + new Date().getFullYear();
+            const trialResp = await fetch(`${licenseServerUrl}/api/v1/validate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ license_key: trialKey, domain: req.headers.host || 'localhost' })
+            });
+            // If not found, we create a local trial license directly
+            const trialPlan = PLAN_DEFINITIONS['FREE'];
+            trialLicense = {
+                key: trialKey,
+                status: 'trial',
+                customer: restaurantName || 'Trial',
+                type: 'FREE',
+                label: trialPlan.label,
+                expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+                modules: trialPlan.modules,
+                limits: { max_dishes: trialPlan.menu_items, max_tables: trialPlan.max_tables },
+                isTrial: true
+            };
+        } catch(e) {
+            // Lizenzserver nicht erreichbar - lokale Trial-Lizenz erstellen
+            const trialPlan = PLAN_DEFINITIONS['FREE'];
+            trialLicense = {
+                key: 'OPA-TRIAL-OFFLINE-' + crypto.randomBytes(4).toString('hex').toUpperCase(),
+                status: 'trial',
+                customer: restaurantName || 'Trial',
+                type: 'FREE',
+                label: trialPlan.label,
+                expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+                modules: trialPlan.modules,
+                limits: { max_dishes: trialPlan.menu_items, max_tables: trialPlan.max_tables },
+                isTrial: true
+            };
+        }
+
+        // --- Save config ---
         const newConfig = {
-            LICENSE_SERVER_URL: licenseServer || CONFIG.LICENSE_SERVER_URL,
-            ADMIN_SECRET: adminSecret || CONFIG.ADMIN_SECRET,
-            SMTP: smtp || CONFIG.SMTP,
-            DB_TYPE: dbType || 'sqlite',
-            DB_DETAILS: dbDetails || {},
+            LICENSE_SERVER_URL: licenseServerUrl,
+            ADMIN_SECRET: adminSecret || crypto.randomBytes(32).toString('hex'),
+            SMTP: smtp || {},
             SETUP_COMPLETE: true
         };
         const configPath = path.join(__dirname, 'config.json');
         fs.writeFileSync(configPath, JSON.stringify(newConfig, null, 4));
         Object.assign(CONFIG, newConfig);
-        res.json({ success: true, message: 'Configuration saved. Restart recommended.' });
+
+        // --- Save trial license to DB ---
+        const settings = DB.getKV('settings', {});
+        settings.license = trialLicense;
+        DB.setKV('settings', settings);
+
+        // --- Create admin user if provided ---
+        if (adminUser && adminPass) {
+            const hash = await bcrypt.hash(adminPass, 10);
+            DB.saveUsers([{ user: adminUser, pass: hash, role: 'admin' }]);
+        }
+
+        res.json({ success: true, trial: trialLicense, message: 'Setup abgeschlossen.' });
     } catch (e) {
         console.error('Setup error:', e);
         res.status(500).json({ success: false, reason: e.message });
     }
 });
 
-app.get('/setup', (req, res) => {
-    res.sendFile(path.join(__dirname, 'cms', 'setup.html'));
-});
+app.get('/setup', (req, res) => res.sendFile(path.join(__dirname, 'cms', 'setup.html')));
+
+// --- Trial license cleanup job (runs every hour) ---
+setInterval(() => {
+    const settings = DB.getKV('settings', {});
+    const lic = settings.license;
+    if (lic && lic.isTrial && lic.expiresAt && new Date(lic.expiresAt) < new Date()) {
+        console.log('⏰ Trial license expired - removing.');
+        delete settings.license;
+        DB.setKV('settings', settings);
+    }
+}, 60 * 60 * 1000);
 
 server.listen(PORT, () => {
     console.log(`\n🚀 RESTAURANT-CMS ONLINE ON PORT ${PORT}`);
-    console.log(`🔒 LICENSE SERVER: ${CONFIG.LICENSE_SERVER_URL}\n`);
+    console.log(`🔒 LICENSE SERVER: ${CONFIG.LICENSE_SERVER_URL}`);
+    console.log(`🌐 CORS ORIGINS: ${allowedOrigins.join(', ')}\n`);
 });
