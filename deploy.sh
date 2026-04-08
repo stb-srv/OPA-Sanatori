@@ -22,8 +22,8 @@ echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}  OPA Santorini CMS - Auto Deploy${NC}"
 echo -e "${GREEN}========================================${NC}"
 
-# ── 1. Node.js 22 installieren ─────────────────────────────────
-echo -e "\n${YELLOW}[1/7] Node.js 22 prüfen / installieren...${NC}"
+# --- 1. Node.js 22 ---
+echo -e "\n${YELLOW}[1/8] Node.js 22 prüfen / installieren...${NC}"
 apt-get update -qq
 apt-get install -y -qq curl git
 if ! command -v node &> /dev/null || [[ $(node -v | cut -d'.' -f1 | tr -d 'v') -lt 20 ]]; then
@@ -32,8 +32,8 @@ if ! command -v node &> /dev/null || [[ $(node -v | cut -d'.' -f1 | tr -d 'v') -
 fi
 echo -e "${GREEN}  Node.js $(node -v) bereit${NC}"
 
-# ── 2. App-User ────────────────────────────────────────────
-echo -e "\n${YELLOW}[2/7] App-User '${APP_USER}' erstellen...${NC}"
+# --- 2. App-User ---
+echo -e "\n${YELLOW}[2/8] App-User '${APP_USER}' erstellen...${NC}"
 if ! id "$APP_USER" &>/dev/null; then
     useradd --system --shell /bin/bash --create-home "$APP_USER"
     echo -e "${GREEN}  User erstellt${NC}"
@@ -41,12 +41,11 @@ else
     echo -e "${GREEN}  User existiert bereits${NC}"
 fi
 
-# ── 3. Repo klonen / updaten ────────────────────────────────
-echo -e "\n${YELLOW}[3/7] Repository klonen / updaten...${NC}"
+# --- 3. Repo klonen / updaten ---
+echo -e "\n${YELLOW}[3/8] Repository klonen / updaten...${NC}"
 git config --global --add safe.directory "$APP_DIR" 2>/dev/null || true
 if [ -d "$APP_DIR/.git" ]; then
     chown -R "$APP_USER":"$APP_USER" "$APP_DIR"
-    sudo -u "$APP_USER" git config --global --add safe.directory "$APP_DIR" 2>/dev/null || true
     cd "$APP_DIR" && sudo -u "$APP_USER" git pull origin main
 else
     git clone "$REPO" "$APP_DIR"
@@ -54,11 +53,10 @@ else
 fi
 echo -e "${GREEN}  Repository aktuell${NC}"
 
-# ── 4. .env erstellen ────────────────────────────────────────
-echo -e "\n${YELLOW}[4/7] .env konfigurieren...${NC}"
+# --- 4. .env erstellen ---
+echo -e "\n${YELLOW}[4/8] .env konfigurieren...${NC}"
 if [ ! -f "$APP_DIR/.env" ]; then
     SECRET=$(openssl rand -hex 48)
-    # Frage nach der Domain
     read -p "  Deine Domain (z.B. prodbeta.stb-srv.de): " APP_DOMAIN
     APP_DOMAIN=${APP_DOMAIN:-prodbeta.stb-srv.de}
     cat > "$APP_DIR/.env" <<EOF
@@ -75,13 +73,13 @@ else
     echo -e "${GREEN}  .env existiert bereits - wird nicht überschrieben${NC}"
 fi
 
-# ── 5. npm install ────────────────────────────────────────────
-echo -e "\n${YELLOW}[5/7] Dependencies installieren...${NC}"
+# --- 5. npm install ---
+echo -e "\n${YELLOW}[5/8] Dependencies installieren...${NC}"
 cd "$APP_DIR" && sudo -u "$APP_USER" npm install --omit=dev
 echo -e "${GREEN}  Dependencies installiert${NC}"
 
-# ── 6. Systemd Service ──────────────────────────────────────
-echo -e "\n${YELLOW}[6/7] Systemd Service einrichten...${NC}"
+# --- 6. Systemd Service ---
+echo -e "\n${YELLOW}[6/8] Systemd Service einrichten...${NC}"
 cat > /etc/systemd/system/${SERVICE_NAME}.service <<EOF
 [Unit]
 Description=OPA Santorini Restaurant CMS
@@ -105,19 +103,28 @@ EOF
 systemctl daemon-reload
 systemctl enable "$SERVICE_NAME"
 systemctl restart "$SERVICE_NAME"
+sleep 2
 echo -e "${GREEN}  Service gestartet & Autostart aktiviert${NC}"
 
-# ── 7. Fertig ───────────────────────────────────────────────
-echo -e "\n${YELLOW}[7/7] Setup-Wizard aufrufen...${NC}"
-echo -e "${GREEN}\n========================================${NC}"
+# --- 7. Admin-User erstellen ---
+echo -e "\n${YELLOW}[7/8] Admin-User erstellen...${NC}"
+read -p "  Admin-Benutzername (Standard: admin): " ADMIN_USER
+ADMIN_USER=${ADMIN_USER:-admin}
+read -s -p "  Admin-Passwort (Standard: admin123 - BITTE ÄNDERN!): " ADMIN_PASS
+echo ""
+ADMIN_PASS=${ADMIN_PASS:-admin123}
+cd "$APP_DIR" && sudo -u "$APP_USER" node scripts/create-admin.js "$ADMIN_USER" "$ADMIN_PASS"
+
+# --- 8. Fertig ---
+echo -e "\n${GREEN}========================================${NC}"
 echo -e "${GREEN}  Deploy erfolgreich!${NC}"
 echo -e "${GREEN}========================================${NC}"
-echo -e "  → Setup-Wizard: ${YELLOW}http://localhost:${PORT}/setup${NC}"
-echo -e "  → öffentlich:    ${YELLOW}https://prodbeta.stb-srv.de/setup${NC}"
+echo -e "  → CMS Login:  ${YELLOW}https://prodbeta.stb-srv.de/admin${NC}"
+echo -e "  → Gästeseite: ${YELLOW}https://prodbeta.stb-srv.de${NC}"
 echo -e ""
 echo -e "  Logs:    ${YELLOW}journalctl -fu ${SERVICE_NAME}${NC}"
 echo -e "  Status:  ${YELLOW}systemctl status ${SERVICE_NAME}${NC}"
 echo -e "  Restart: ${YELLOW}systemctl restart ${SERVICE_NAME}${NC}"
+echo -e "  Update:  ${YELLOW}cd ${APP_DIR} && git pull && systemctl restart ${SERVICE_NAME}${NC}"
 echo -e ""
-echo -e "${YELLOW}  HINWEIS: Port ${PORT} in Firewall freigeben:${NC}"
-echo -e "  ${YELLOW}ufw allow ${PORT}${NC}\n"
+echo -e "${RED}  WICHTIG: Passwort nach erstem Login ändern!${NC}\n"
