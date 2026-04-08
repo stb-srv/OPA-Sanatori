@@ -18,7 +18,8 @@ const { getCurrentLicense, PLAN_DEFINITIONS } = require('./server/license.js');
 const app = express();
 const server = require('http').createServer(app);
 const io = require('socket.io')(server);
-app.set('trust proxy', true);
+// Set to 1 if behind a single reverse proxy (e.g. nginx), or false for local dev without proxy
+app.set('trust proxy', 1);
 const PORT = CONFIG.PORT || 5000;
 const ADMIN_SECRET = CONFIG.ADMIN_SECRET;
 
