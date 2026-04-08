@@ -13,6 +13,7 @@ const sanitizeHtml = require('sanitize-html');
 const CONFIG = require('./config.js');
 const DB = require('./server/database.js');
 const Mailer = require('./server/mailer.js');
+const { getCurrentLicense, PLAN_DEFINITIONS } = require('./server/license.js');
 
 const app = express();
 const server = require('http').createServer(app);
@@ -28,7 +29,6 @@ const allowedOrigins = process.env.CORS_ORIGINS
 
 app.use(cors({
     origin: (origin, callback) => {
-        // Allow requests with no origin (e.g. mobile apps, curl, same-origin)
         if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
         callback(new Error(`CORS blocked: ${origin}`));
     },
@@ -100,7 +100,6 @@ const calculateDuration = (guestCount, rc = null) => {
     return config.durationLarge || 150;
 };
 
-// Parse time with optional date string for accurate overlap detection
 const parseTime = (timeStr, dateStr = null) => {
     if (!timeStr) return new Date();
     const cleanTime = timeStr.replace(/[^0-9:]/g, '');
@@ -110,13 +109,11 @@ const parseTime = (timeStr, dateStr = null) => {
     return d;
 };
 
-// Build end time safely, handling midnight overflow
 const buildEndTime = (startTime, durationMinutes) => {
     const d = parseTime(startTime);
     d.setMinutes(d.getMinutes() + durationMinutes);
     const h = d.getHours();
     const m = d.getMinutes();
-    // Cap at 23:59 if overflow
     if (h >= 24) return '23:59';
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 };
@@ -133,7 +130,6 @@ const findAvailableTables = (date, startTime, duration, guestCount, areaId = nul
     const settings = DB.getKV('settings', {});
     const rc = settings.reservationConfig || { buffer: 15 };
 
-    // Check Opening Hours
     const homepage = DB.getKV('homepage', {});
     const oh = homepage.openingHours || {};
     const d = new Date(date.split('.').reverse().join('-'));
@@ -151,7 +147,6 @@ const findAvailableTables = (date, startTime, duration, guestCount, areaId = nul
     }
 
     const endTime = buildEndTime(startTime, duration);
-
     const tables = DB.getTables() || [];
     let activeTables = tables.filter(t => t.active);
 
@@ -193,11 +188,9 @@ const findAvailableTables = (date, startTime, duration, guestCount, areaId = nul
 
     const availableTables = activeTables.filter(t => !unavailableTableIds.has(t.id));
 
-    // 1. Single Table Fit
     let fit = availableTables.filter(t => t.capacity >= guestCount).sort((a, b) => a.capacity - b.capacity)[0];
     if (fit) return { success: true, tables: [fit.id], endTime };
 
-    // 2. Combinable Tables Fit (Simple greedy)
     const combinable = availableTables.filter(t => t.combinable).sort((a, b) => b.capacity - a.capacity);
     let combinedCapacity = 0;
     let selectedIds = [];
@@ -210,7 +203,7 @@ const findAvailableTables = (date, startTime, duration, guestCount, areaId = nul
     return { success: false, reason: `Keine Kapazität im Bereich ${areaId || 'Gesamt'} verfügbar` };
 };
 
-// --- Security ---
+// --- Security Middleware ---
 const requireAuth = (req, res, next) => {
     const token = req.headers['x-admin-token'];
     if (!token) return res.status(401).json({ success: false, reason: 'No token' });
@@ -223,12 +216,33 @@ const requireAuth = (req, res, next) => {
     }
 };
 
+// Check if a specific module is enabled in the active license
 const requireLicense = (module) => {
     return (req, res, next) => {
         const l = DB.getKV('settings')?.license || {};
         if (!l.modules || !l.modules[module]) return res.status(403).json({ success: false, reason: `Feature '${module}' gesperrt.` });
         next();
     };
+};
+
+// Check if the menu item count is within the license limit
+const requireMenuLimit = (req, res, next) => {
+    const lic = getCurrentLicense(DB);
+    const maxDishes = lic.limits?.max_dishes ?? 10;
+    const currentMenu = DB.getMenu() || [];
+
+    // Allow saving if reducing or equal, block only when adding beyond limit
+    const incomingItems = Array.isArray(req.body) ? req.body : [];
+    if (incomingItems.length > maxDishes) {
+        return res.status(403).json({
+            success: false,
+            reason: `Ihr ${lic.label || lic.type}-Plan erlaubt maximal ${maxDishes} Speisen. Sie versuchen ${incomingItems.length} zu speichern. Bitte upgraden Sie Ihren Plan.`,
+            limit: maxDishes,
+            current: incomingItems.length,
+            plan: lic.type
+        });
+    }
+    next();
 };
 
 // --- API Router ---
@@ -263,7 +277,7 @@ app.post('/api/users', requireAuth, (req, res) => {
 });
 
 app.get('/api/menu', (req, res) => res.json(DB.getMenu()));
-app.post('/api/menu', requireAuth, requireLicense('menu_edit'), (req, res) => {
+app.post('/api/menu', requireAuth, requireLicense('menu_edit'), requireMenuLimit, (req, res) => {
     DB.saveMenu(req.body); res.json({ success: true });
 });
 
@@ -316,7 +330,6 @@ app.post('/api/reservations/submit', reservationLimiter, requireLicense('reserva
     const settings = DB.getKV('settings', {});
     const rc = settings.reservationConfig || { allowInquiry: true };
 
-    // Sanitize all user inputs
     const name = sanitizeText(req.body.name);
     const email = sanitizeText(req.body.email);
     const phone = sanitizeText(req.body.phone);
@@ -344,7 +357,6 @@ app.post('/api/reservations/submit', reservationLimiter, requireLicense('reserva
 
     const newRes = {
         id: Date.now(),
-        // Cryptographically secure token
         token: crypto.randomBytes(32).toString('hex'),
         name, email, phone, date,
         time: time + ' Uhr',
@@ -355,7 +367,6 @@ app.post('/api/reservations/submit', reservationLimiter, requireLicense('reserva
         status,
         assigned_tables: assignedTables,
         submittedAt: new Date().toISOString(),
-        // Anonymized IP: only first two octets for DSGVO compliance
         ip: (req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split('.').slice(0, 2).join('.') + '.x.x'
     };
 
@@ -404,7 +415,6 @@ app.post('/api/reservations', requireAuth, (req, res) => {
     DB.saveReservations(req.body); res.json({ success: true });
 });
 
-// Token-based Actions (Public)
 app.get('/api/reservations/cancel/:token', (req, res) => {
     const list = DB.getReservations();
     const r = list.find(x => x.token === req.params.token);
@@ -500,7 +510,20 @@ app.post('/api/settings', requireAuth, (req, res) => {
     DB.setKV('settings', req.body); res.json({ success: true });
 });
 
-// --- Remote License Bridge (IMMUTABLE BY CLIENTS) ---
+// --- License API ---
+
+// Returns current license info + plan limits for the frontend (CMS)
+app.get('/api/license/info', requireAuth, (req, res) => {
+    const lic = getCurrentLicense(DB);
+    const currentMenu = DB.getMenu() || [];
+    res.json({
+        ...lic,
+        menu_items_used: currentMenu.length,
+        plans: PLAN_DEFINITIONS
+    });
+});
+
+// Validates a key against the remote license server and stores the result locally
 app.post('/api/license/validate', async (req, res) => {
     try {
         const response = await fetch(`${CONFIG.LICENSE_SERVER_URL}/api/v1/validate`, {
@@ -512,7 +535,8 @@ app.post('/api/license/validate', async (req, res) => {
             const settings = DB.getKV('settings', {});
             settings.license = {
                 key: req.body.key, status: 'active', customer: r.customer_name,
-                type: r.type, expiresAt: r.expires_at, modules: r.allowed_modules, limits: r.limits
+                type: r.type, label: r.plan_label, expiresAt: r.expires_at,
+                modules: r.allowed_modules, limits: r.limits
             };
             DB.setKV('settings', settings);
             res.json({ success: true, license: settings.license });
@@ -528,7 +552,7 @@ app.post('/api/upload', requireAuth, upload.single('image'), (req, res) => {
 });
 
 app.delete('/api/upload/:filename', requireAuth, (req, res) => {
-    const filename = path.basename(req.params.filename); // Prevent path traversal
+    const filename = path.basename(req.params.filename);
     const fp = path.join(UPLOADS_DIR, filename);
     if (fs.existsSync(fp)) { fs.unlinkSync(fp); return res.json({ success: true }); }
     res.status(404).json({ success: false });
@@ -569,11 +593,9 @@ app.post('/api/plugins/toggle', requireAuth, (req, res) => {
 });
 
 // --- Dynamic Plugin Routes ---
-// NOTE: Plugins run server-side code. Only install plugins from trusted sources.
 const loadPluginServers = () => {
     const activePlugins = DB.getKV('plugins', []).filter(p => p.enabled);
     activePlugins.forEach(p => {
-        // Sanitize plugin ID to prevent path traversal
         const safeId = path.basename(p.id);
         const serverPath = path.join(PLUGINS_DIR, safeId, 'server.js');
         if (fs.existsSync(serverPath)) {
