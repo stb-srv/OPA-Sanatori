@@ -1,5 +1,5 @@
 # OPA! Santorini
-# 🇬🇷 Grieche-CMS - Funktionsumfang & Roadmap
+#OPA! Santorini-CMS - Funktionsumfang & Roadmap
 
 Dieses Dokument beschreibt die geplanten und implementierten Features des Grieche-CMS. Das System ist modular aufgebaut, sodass einzelne Funktionen je nach Bedarf des Restaurant-Betreibers aktiviert oder deaktiviert werden können.
 
