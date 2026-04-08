@@ -12,8 +12,8 @@
 
 ### Installation
 ```bash
-git clone https://github.com/stb-srv/OPA-Santorini.git
-cd OPA-Santorini
+git clone https://github.com/stb-srv/OPA-Santorini.git /opt/opa-santorini
+cd /opt/opa-santorini
 npm install
 node server.js
 ```
@@ -26,15 +26,13 @@ Beim ersten Start wird der **Setup-Wizard** automatisch geöffnet (`/setup`).
 
 ## 🔄 Server aktualisieren
 
-Einfach im Projektverzeichnis ausführen:
-
 ```bash
-git pull && npm install && pm2 restart all
+cd /opt/opa-santorini && git pull && npm install && pm2 restart all
 ```
 
 > Falls kein pm2 verwendet wird:
 > ```bash
-> git pull && npm install
+> cd /opt/opa-santorini && git pull && npm install
 > # Danach den Node-Prozess neu starten
 > ```
 
@@ -130,7 +128,7 @@ git pull && npm install && pm2 restart all
 ## 📁 Projektstruktur
 
 ```
-OPA-Santorini/
+/opt/opa-santorini/
 ├── server.js          # Express-Server & alle API-Routen
 ├── config.js          # Konfiguration (Port, Secrets, SMTP)
 ├── server/
