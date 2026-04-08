@@ -1,68 +1,148 @@
-# OPA! Santorini
-#OPA! Santorini-CMS - Funktionsumfang & Roadmap
+# 🏛️ OPA! Santorini CMS
 
-Dieses Dokument beschreibt die geplanten und implementierten Features des Grieche-CMS. Das System ist modular aufgebaut, sodass einzelne Funktionen je nach Bedarf des Restaurant-Betreibers aktiviert oder deaktiviert werden können.
-
-#Optimierungen
-Optimierung für alle möglichen Geräte damit immer alles geht
-
-## 🛒 Bestell- & Zahlungssystem (Modular)
-
-### 1. Warenkorb & Live-Kalkulation
-
-- **Interaktiver Warenkorb:** Kunden können Gerichte direkt aus der digitalen Speisekarte in einen Warenkorb legen.
-- **Preistransparenz:** Sofortige Anzeige der Gesamtsumme (inkl. MwSt. und ggf. Liefergebühren).
-- **Optionale Mengenanpassung:** Schnelles Ändern der Anzahl direkt im Warenkorb-Overlay.
-
-### 2. Bestellung & Abholung (Takeaway)
-
-- **Zeitfenster-Management:** Kunden wählen eine Wunschzeit für die Abholung.
-- **Status-Updates:** Der Gast erhält eine Bestätigung (E-Mail/SMS), wenn das Essen vorbereitet wird oder zur Abholung bereitsteht.
-- **Bezahloptionen:** Barzahlung bei Abholung oder Online-Zahlung (PayPal, Kreditkarte).
-
-### 3. QR-Pay-at-Table (Premium Modul)
-
-- **Tisch-Scannen:** Jedes Tisch-Set erhält einen eindeutigen QR-Code.
-- **Direkt-Check-Out:** Gäste können ihre Rechnung am Tisch einsehen und sofort digital begleichen.
-- **Deaktivierbarkeit:** Dieses Modul kann in den Admin-Einstellungen mit einem Klick komplett deaktiviert werden, falls klassischer Service bevorzugt wird.
-
-### 4. Tisch-Reservierung (Online-Buchung)
-
-- **Echtzeit-Verfügbarkeit:** Kunden können Tische direkt über die Website buchen.
-- **Kapazitäts-Management:** Automatische Begrenzung der Buchungen basierend auf der Tischanzahl.
-- **Bestätigungs-Logik:** Sofortige Bestätigung oder manuelle Freigabe durch den Wirt.
+> Modulares Restaurant-Management-System – Speisekarte, Reservierungen, Website-Editor & mehr.
 
 ---
 
-## 🍽️ Digitales Menü-Management
+## 🚀 Schnellstart
 
-- **Responsive Speisekarte:** Optimiert für Smartphones (Mobile-First) mit flüssigen Animationen.
-- **Produkt-Optionen:** Auswahl von Beilagen (z.B. Pommes statt Reis) oder Extras (z.B. extra Schafskäse).
-- **Allergen-Kennzeichnung:** Rechtlich konforme Darstellung von Zusatzstoffen und Allergenen via Tooltips oder Icons.
-- **Tagesgerichte:** Schnelles Einblenden/Ausblenden von wechselnden Spezialitäten (z.B. Lamm-Haxe am Sonntag).
+### Voraussetzungen
+- Node.js ≥ 18
+- npm
 
-### 5. Administration & Sicherheit (CMS-Panel)
+### Installation
+```bash
+git clone https://github.com/stb-srv/OPA-Santorini.git
+cd OPA-Santorini
+npm install
+node server.js
+```
 
-- **Zentrales Login-System:** Sicherer Zugang für den Restaurant-Inhaber über ein verschlüsseltes Portal.
-- **Seiten-Management:** Individuelle Login-Berechtigungen für die Bearbeitung spezifischer Seiten (z.B. Menü-Editor vs. Galerie-Verwaltung).
-- **Modul-Steuerung:** Zentrale Schaltstelle zum Aktivieren/Deaktivieren von:
-  - Warenkorb & Bestellen (Nur Anzeigen der Karte möglich)
-  - Abholung & Lieferservice
-  - Tisch-Zahlung (QR-Pay)
-  - Tisch-Reservierung
-- **Lizenz-Integration:**
-  - **Zustands-Sync:** Automatische Deaktivierung von Premium-Features (z.B. QR-Pay), wenn die Lizenz abläuft.
-  - **Benachrichtigung:** Warnhinweise im Dashboard vor Ablauf der Lizenz (30 Tage, 7 Tage, 1 Tag).
-  - **Grace Period:** Pufferzeit für den Weiterbetrieb bei abgelaufener Lizenz (nur für den Gast-Bereich).
-- **Kundenberichte (CRM):** Übersicht über Stammkunden, häufig bestellte Gerichte und Reservierungshistorie.
-- **Steuersatz-Differenzierung:** Automatische Berechnung von 7% (Mitnahme) vs. 19% (Verzehr vor Ort) MwSt.
-- **Lizenz-Validierung:** Abgleich mit dem `Lizenzserver.md` zur Sicherstellung der Domain-Gültigkeit.
+Das CMS ist dann erreichbar unter: `http://localhost:5000/admin`
+
+Beim ersten Start wird der **Setup-Wizard** automatisch geöffnet (`/setup`).
 
 ---
 
-## 🚀 Zukünftige Ideen (Roadmap)
+## 🔄 Server aktualisieren
 
-- [ ] **Gutschein-System:** Verkauf von digitalen Geschenkkarten.
-- [ ] **Google Reviews Integration:** Anzeige der neuesten 5-Sterne Bewertungen.
-- [ ] **Sammelpass-Digital:** Jede 10. Abhol-Bestellung erhält einen Rabatt.
+Einfach im Projektverzeichnis ausführen:
 
+```bash
+git pull && npm install && pm2 restart all
+```
+
+> Falls kein pm2 verwendet wird:
+> ```bash
+> git pull && npm install
+> # Danach den Node-Prozess neu starten
+> ```
+
+---
+
+## 🗂️ CMS-Navigation
+
+```
+📊 Dashboard
+🌐 Website
+   ├─ Startseite & Bilder
+   ├─ Seiten verwalten
+   ├─ Impressum & Datenschutz
+   ├─ Cookie Banner
+   ├─ Standort & Karte
+   ├─ Urlaub
+   └─ Feiertage
+🍽 Restaurant
+   ├─ Reservierungen
+   ├─ Tische
+   └─ Öffnungszeiten
+📋 Speisekarte
+   ├─ Gerichte
+   ├─ Kategorien
+   ├─ Allergene
+   └─ Zusatzstoffe
+⚙️ System
+   ├─ Einstellungen
+   └─ Erweiterungen
+```
+
+---
+
+## ✨ Features
+
+### 🍽️ Speisekarten-Verwaltung
+- Gerichte mit Bild, Preis, Nummer & Beschreibung
+- Kategorien, Allergene & Zusatzstoffe
+- PDF-Export der Speisekarte
+- JSON-Backup & Restore (Import/Export)
+- Plan-Limit-Prüfung beim Speichern
+
+### 📅 Reservierungen
+- Online-Buchung mit Echtzeit-Verfügbarkeitsprüfung
+- Tisch-Zuweisung & Kombinationstisch-Logik
+- Bestätigungs-/Storno-Links per E-Mail
+- Warteliste / Anfrage-Modus wenn voll
+- Konfigurierbarer Puffer & Aufenthaltsdauer
+
+### 🌐 Website-Editor
+- Startseite, Hero, Galerie & Öffnungszeiten
+- Impressum, Datenschutz & Cookie-Banner
+- Standort-Karte einbetten
+- Urlaubs- & Feiertagsverwaltung
+
+### 🔑 Lizenz-System
+- FREE / STARTER / PRO / ENTERPRISE Pläne
+- Trial-Lizenz beim Setup (30 Tage)
+- Plan-Module einzeln manuell überschreibbar (Admin)
+- Validierung gegen externen Lizenzserver
+
+### 🔌 Erweiterungen (Plugins)
+- Plugin-System mit eigenem `server.js` & Frontend
+- Aktivierung/Deaktivierung per Toggle
+
+---
+
+## 🗺️ Roadmap
+
+- [ ] Gutschein-System (digitale Geschenkkarten)
+- [ ] Google Reviews Integration
+- [ ] Sammelpass-Digital (jede 10. Bestellung = Rabatt)
+- [ ] QR-Pay (Bezahlung am Tisch per QR-Code)
+- [ ] SMS-Benachrichtigungen
+- [ ] Mehrsprachigkeit (DE / EN / GR)
+
+---
+
+## 🛠️ Tech Stack
+
+| Bereich | Technologie |
+|---|---|
+| Backend | Node.js, Express |
+| Datenbank | JSON-Flat-File via `database.js` |
+| Auth | JWT + bcrypt |
+| Realtime | Socket.io |
+| Frontend | Vanilla JS (ES Modules) |
+| Styling | CSS Custom Properties, Glassmorphism |
+| E-Mail | Nodemailer (SMTP) |
+
+---
+
+## 📁 Projektstruktur
+
+```
+OPA-Santorini/
+├── server.js          # Express-Server & alle API-Routen
+├── config.js          # Konfiguration (Port, Secrets, SMTP)
+├── server/
+│   ├── database.js    # Datenbankschicht (JSON-Files)
+│   ├── license.js     # Lizenz-Logik & Plan-Definitionen
+│   └── mailer.js      # E-Mail-Versand
+├── cms/               # Admin-Interface
+│   ├── index.html
+│   ├── app.js
+│   ├── style.css
+│   └── modules/       # Einzelne CMS-Module (menu, reservations, ...)
+├── menu-app/          # Gäste-Frontend (Speisekarte)
+├── plugins/           # Erweiterungen
+└── uploads/           # Hochgeladene Bilder
+```
