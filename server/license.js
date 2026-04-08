@@ -1,128 +1,108 @@
 /**
- * License Plan Definitions & Helper
- * Zentrale Wahrheitsquelle für alle Lizenzpläne.
+ * OPA Santorini - License Plan Definitions & Helpers
+ * Single source of truth for all plan limits and modules.
  */
 
-const PLANS = {
+const PLAN_DEFINITIONS = {
     FREE: {
-        id: 'FREE',
-        name: 'Free',
-        description: 'Zum Testen – immer kostenlos',
-        limits: {
-            max_dishes: 10,
-            max_tables: 5
-        },
-        allowed_modules: {
+        label: 'Free',
+        menu_items: 10,
+        max_tables: 5,
+        modules: {
             menu_edit: true,
             orders_kitchen: false,
             reservations: false,
             custom_design: false,
-            analytics: false
-        }
+            analytics: false,
+            qr_pay: false
+        },
+        note: 'Kostenlos zum Testen'
     },
     STARTER: {
-        id: 'STARTER',
-        name: 'Starter',
-        description: 'Für Imbiss & Café',
-        limits: {
-            max_dishes: 40,
-            max_tables: 10
-        },
-        allowed_modules: {
+        label: 'Starter',
+        menu_items: 40,
+        max_tables: 10,
+        modules: {
             menu_edit: true,
             orders_kitchen: true,
-            reservations: false,
+            reservations: true,
             custom_design: false,
-            analytics: false
-        }
+            analytics: false,
+            qr_pay: false
+        },
+        note: 'Für kleine Cafés & Imbisse'
     },
     PRO: {
-        id: 'PRO',
-        name: 'Pro',
-        description: 'Für Restaurants',
-        limits: {
-            max_dishes: 100,
-            max_tables: 30
-        },
-        allowed_modules: {
+        label: 'Pro',
+        menu_items: 100,
+        max_tables: 25,
+        modules: {
             menu_edit: true,
             orders_kitchen: true,
             reservations: true,
-            custom_design: false,
-            analytics: false
-        }
+            custom_design: true,
+            analytics: false,
+            qr_pay: false
+        },
+        note: 'Für Restaurants'
     },
     PRO_PLUS: {
-        id: 'PRO_PLUS',
-        name: 'Pro+',
-        description: 'Für größere Restaurants',
-        limits: {
-            max_dishes: 200,
-            max_tables: 60
-        },
-        allowed_modules: {
+        label: 'Pro+',
+        menu_items: 200,
+        max_tables: 50,
+        modules: {
             menu_edit: true,
             orders_kitchen: true,
             reservations: true,
             custom_design: true,
-            analytics: false
-        }
+            analytics: true,
+            qr_pay: false
+        },
+        note: 'Für große Restaurants'
     },
     ENTERPRISE: {
-        id: 'ENTERPRISE',
-        name: 'Enterprise',
-        description: 'Für Ketten & Hotels',
-        limits: {
-            max_dishes: 500,
-            max_tables: 200
-        },
-        allowed_modules: {
+        label: 'Enterprise',
+        menu_items: 500,
+        max_tables: 999,
+        modules: {
             menu_edit: true,
             orders_kitchen: true,
             reservations: true,
             custom_design: true,
-            analytics: true
-        }
+            analytics: true,
+            qr_pay: true
+        },
+        note: 'Für Ketten & Hotels'
     }
 };
 
 /**
- * Gibt die Limits des aktuellen Lizenzplans zurück.
- * Fällt auf FREE zurück wenn keine oder ungültige Lizenz gesetzt ist.
+ * Returns the plan definition for a given type string.
+ * Falls back to FREE if unknown.
  */
-const getPlanLimits = (license) => {
-    if (!license || license.status !== 'active') {
-        return PLANS.FREE.limits;
-    }
-    // Lizenz hat eigene Limits (vom Lizenzserver) → diese haben Vorrang
-    if (license.limits && typeof license.limits.max_dishes === 'number') {
-        return license.limits;
-    }
-    // Fallback auf Plan-Definition
-    const plan = PLANS[license.type];
-    return plan ? plan.limits : PLANS.FREE.limits;
+const getPlan = (type) => {
+    return PLAN_DEFINITIONS[type] || PLAN_DEFINITIONS['FREE'];
 };
 
 /**
- * Gibt den vollständigen Plan zurück (für Info-Endpoints).
+ * Returns the current active license from DB settings.
+ * Falls back to FREE plan limits if no license is set.
  */
-const getPlanInfo = (license) => {
-    if (!license || license.status !== 'active') return PLANS.FREE;
-    return PLANS[license.type] || PLANS.FREE;
+const getCurrentLicense = (DB) => {
+    const settings = DB.getKV('settings', {});
+    const lic = settings.license || {};
+    const plan = getPlan(lic.type);
+    return {
+        key: lic.key || null,
+        status: lic.status || 'free',
+        customer: lic.customer || 'Testmodus',
+        type: lic.type || 'FREE',
+        label: plan.label,
+        expiresAt: lic.expiresAt || null,
+        modules: lic.modules || plan.modules,
+        limits: lic.limits || { max_dishes: plan.menu_items, max_tables: plan.max_tables },
+        plan
+    };
 };
 
-/**
- * Prüft ob ein bestimmtes Modul für die aktuelle Lizenz erlaubt ist.
- */
-const isModuleAllowed = (license, module) => {
-    if (!license || license.status !== 'active') {
-        return PLANS.FREE.allowed_modules[module] || false;
-    }
-    if (license.modules && typeof license.modules[module] !== 'undefined') {
-        return !!license.modules[module];
-    }
-    const plan = PLANS[license.type];
-    return plan ? (plan.allowed_modules[module] || false) : false;
-};
-
-module.exports = { PLANS, getPlanLimits, getPlanInfo, isModuleAllowed };
+module.exports = { PLAN_DEFINITIONS, getPlan, getCurrentLicense };
