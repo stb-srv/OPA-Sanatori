@@ -5,9 +5,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "license": "node license-server/server.js",
-    "dev": "concurrently \"npm run start\" \"npm run license\"",
-    "install-all": "npm install && cd license-server && npm install",
+    "dev": "node server.js",
+    "install-all": "npm install",
     "update": "git pull && npm run install-all",
     "export": "powershell -ExecutionPolicy Bypass -File export.ps1"
   },

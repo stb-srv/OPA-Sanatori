@@ -13,17 +13,7 @@ if %errorlevel% neq 0 (
     exit /b %errorlevel%
 )
 
-echo [2/3] Installiere Abhaengigkeiten fuer den integrierten Lizenzserver...
-cd license-server
-call npm install --silent
-cd ..
-if %errorlevel% neq 0 (
-    echo Fehler bei npm install im license-server.
-    pause
-    exit /b %errorlevel%
-)
-
-echo [3/3] Installation erfolgreich! Starte nun alle Server...
+echo [2/2] Installation erfolgreich! Starte nun alle Server...
 echo.
 echo ==============================================================
 echo Das CMS ist gleich lokal auf folgendem Port erreichbar:
