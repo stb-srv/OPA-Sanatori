@@ -36,7 +36,7 @@ export async function apiPost(route, data) {
             },
             body: JSON.stringify(data)
         });
-        if (r.status === 401) return handleAuthFailure();
+        if (r.status === 401 && route !== 'admin/login') return handleAuthFailure();
         const res = await r.json();
         // Global error handling for 403 (License/Permission)
         if (r.status === 403) { 
