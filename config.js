@@ -42,7 +42,18 @@ if (fs.existsSync(CONFIG_PATH)) {
 }
 
 if (!CONFIG.ADMIN_SECRET || CONFIG.ADMIN_SECRET === 'change-me-before-production') {
-    console.warn('⚠️  WARNING: ADMIN_SECRET is not set in .env! Using insecure default.');
+    let wasLoadedFromConfig = false;
+    if (fs.existsSync(CONFIG_PATH)) {
+        try {
+            const fileContent = fs.readFileSync(CONFIG_PATH, 'utf8');
+            const parsed = JSON.parse(fileContent);
+            if (parsed.ADMIN_SECRET) wasLoadedFromConfig = true;
+        } catch(e) {}
+    }
+    
+    if (!wasLoadedFromConfig) {
+        console.warn('⚠️  WARNING: ADMIN_SECRET is not set in .env or config.json! Using insecure default.');
+    }
 }
 
 module.exports = CONFIG;

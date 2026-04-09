@@ -219,6 +219,9 @@
             <div class="card-subtitle">Erstelle den ersten Administrator-Zugang für das CMS.</div>
             <div class="form-row">
                 <div class="form-group"><label>Benutzername</label><input type="text" id="adminUser" placeholder="admin" autocomplete="off"></div>
+                <div class="form-group"><label>E-Mail Adresse</label><input type="email" id="adminEmail" placeholder="admin@restaurant.de" autocomplete="off"></div>
+            </div>
+            <div class="form-row">
                 <div class="form-group"><label>Passwort</label>
                     <div class="input-wrap">
                         <input type="password" id="adminPass" placeholder="Sicheres Passwort" oninput="checkPwStrength(this.value)">
@@ -229,6 +232,7 @@
                 </div>
             </div>
             <div class="form-group"><label>Passwort bestätigen</label><input type="password" id="adminPassConfirm" placeholder="Passwort wiederholen"></div>
+            </div>
             <div class="info-box green" style="margin-top:4px"><i class="fas fa-shield-halved"></i> Weitere Admin-Accounts können später im CMS unter <strong>Benutzer</strong> angelegt werden.</div>
             <div class="btn-row">
                 <button class="btn btn-ghost" onclick="goStep(4)"><i class="fas fa-arrow-left"></i> Zurück</button>
@@ -367,7 +371,9 @@ async function finishSetup() {
             lang:    document.getElementById('restLang').value,
             timezone: document.getElementById('restTz').value
         },
-        admin: { user, pass }
+        adminUser: document.getElementById('adminUser').value.trim(),
+        adminEmail: document.getElementById('adminEmail').value.trim(),
+        adminPass: document.getElementById('adminPass').value
     };
 
     try {

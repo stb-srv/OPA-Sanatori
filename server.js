@@ -589,7 +589,7 @@ app.use((err, req, res, next) => {
 app.post('/api/setup', async (req, res) => {
     if (CONFIG.SETUP_COMPLETE) return res.status(403).json({ success: false, reason: 'Already configured' });
     try {
-        const { restaurantName, licenseServer, adminSecret, smtp, adminUser, adminPass } = req.body;
+        const { restaurantName, licenseServer, adminSecret, smtp, adminUser, adminPass, adminEmail } = req.body;
         const licenseServerUrl = (licenseServer || 'https://licens-prod.stb-srv.de').replace(/\/+$/, '');
 
         let trialLicense = null;
@@ -639,7 +639,7 @@ app.post('/api/setup', async (req, res) => {
 
         if (adminUser && adminPass) {
             const hash = await bcrypt.hash(adminPass, 10);
-            DB.saveUsers([{ user: adminUser, pass: hash, role: 'admin' }]);
+            DB.addUser({ user: adminUser, pass: hash, name: 'Setup', last_name: 'Admin', email: adminEmail || '', role: 'admin' });
         }
 
         res.json({ success: true, trial: trialLicense, message: 'Setup abgeschlossen.' });
