@@ -10,31 +10,52 @@
 - Node.js ≥ 18
 - npm
 
-### Installation
+### 1-Klick Installation (Empfohlen)
+
+Das System bringt vollautomatische Installations- und Start-Skripte mit. Lade oder klone das Repository und starte einfach per Doppelklick:
+
+**Für Windows:**
+Führe `start-windows.bat` aus.
+
+**Für Mac/Linux:**
+```bash
+chmod +x start-mac-linux.sh
+./start-mac-linux.sh
+```
+
+### Manuelle Installation (Für Server-Admins)
 ```bash
 git clone https://github.com/stb-srv/OPA-Santorini.git /opt/opa-santorini
 cd /opt/opa-santorini
-npm install
-node server.js
+npm run install-all
+npm run dev
 ```
 
 Das CMS ist dann erreichbar unter: `http://localhost:5000/admin`
-
-Beim ersten Start wird der **Setup-Wizard** automatisch geöffnet (`/setup`).
+Beim ersten Aufruf startet sofort der **Setup-Wizard**.
 
 ---
 
-## 🔄 Server aktualisieren
+## 🔄 System aktualisieren
 
-```bash
-cd /opt/opa-santorini && git pull && npm install && pm2 restart all
+Dank der neuen Update-Skripte ist das System mit einem Klick sofort auf dem neuesten Stand.
+
+### Windows
+```cmd
+update-windows.bat
 ```
 
-> Falls kein pm2 verwendet wird:
-> ```bash
-> cd /opt/opa-santorini && git pull && npm install
-> # Danach den Node-Prozess neu starten
-> ```
+### Mac / Linux
+```bash
+./update-mac-linux.sh
+```
+
+Alternativ manuell:
+```bash
+cd /opt/opa-santorini
+npm run update
+pm2 restart all # (Falls pm2 verwendet wird)
+```
 
 ---
 

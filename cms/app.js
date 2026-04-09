@@ -148,6 +148,65 @@ if (loginForm) {
             showToast(res.reason, 'error');
         }
     };
+
+    const linkForgot = document.getElementById('link-forgot-pass');
+    const linkBack = document.getElementById('link-back-login');
+    const loginContainer = document.getElementById('login-wrapper'); // this is actually inside login-container
+    const loginFormContainer = document.getElementById('login-form');
+    const forgotContainer = document.getElementById('forgot-password-container');
+    const forgotForm = document.getElementById('forgot-password-form');
+
+    if (linkForgot) {
+        linkForgot.onclick = (e) => {
+            e.preventDefault();
+            document.getElementById('login-container').style.display = 'none';
+            document.getElementById('forgot-password-container').style.display = 'flex';
+        };
+    }
+    
+    if (linkBack) {
+        linkBack.onclick = (e) => {
+            e.preventDefault();
+            document.getElementById('forgot-password-container').style.display = 'none';
+            document.getElementById('login-container').style.display = 'flex';
+        };
+    }
+
+    if (forgotForm) {
+        forgotForm.onsubmit = async (e) => {
+            e.preventDefault();
+            const user = document.getElementById('forgot-username').value;
+            const btn = document.getElementById('btn-forgot-submit');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Sende...';
+            
+            try {
+                const res = await fetch('/api/admin/forgot-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    setTimeout(() => {
+                        document.getElementById('forgot-password-container').style.display = 'none';
+                        document.getElementById('login-container').style.display = 'flex';
+                        btn.disabled = false;
+                        btn.innerHTML = 'Neues Passwort anfordern';
+                    }, 2000);
+                } else {
+                    showToast(data.reason || 'Fehler beim Senden', 'error');
+                    btn.disabled = false;
+                    btn.innerHTML = 'Neues Passwort anfordern';
+                }
+            } catch (err) {
+                showToast('Verbindungsfehler', 'error');
+                btn.disabled = false;
+                btn.innerHTML = 'Neues Passwort anfordern';
+            }
+        };
+    }
 }
 
 const pwdChangeForm = document.getElementById('password-change-form');

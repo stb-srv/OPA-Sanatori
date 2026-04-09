@@ -637,12 +637,23 @@ app.post('/api/setup', async (req, res) => {
             DB.setKV('branding', branding);
         }
 
+        let plainRecoveryCodes = [];
         if (adminUser && adminPass) {
             const hash = await bcrypt.hash(adminPass, 10);
-            DB.addUser({ user: adminUser, pass: hash, name: 'Setup', last_name: 'Admin', email: adminEmail || '', role: 'admin' });
+            const hashedCodes = [];
+            for (let i = 0; i < 3; i++) {
+                const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+                let code = 'OPA-';
+                for (let j=0; j<4; j++) code += chars[Math.floor(Math.random() * chars.length)];
+                code += '-';
+                for (let j=0; j<4; j++) code += chars[Math.floor(Math.random() * chars.length)];
+                plainRecoveryCodes.push(code);
+                hashedCodes.push(await bcrypt.hash(code, 10));
+            }
+            DB.addUser({ user: adminUser, pass: hash, name: 'Setup', last_name: 'Admin', email: adminEmail || '', role: 'admin', recovery_codes: hashedCodes });
         }
 
-        res.json({ success: true, trial: trialLicense, message: 'Setup abgeschlossen.' });
+        res.json({ success: true, trial: trialLicense, message: 'Setup abgeschlossen.', recovery_codes: plainRecoveryCodes });
     } catch (e) {
         console.error('Setup error:', e);
         res.status(500).json({ success: false, reason: e.message });
