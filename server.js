@@ -537,6 +537,12 @@ app.post('/api/setup', async (req, res) => {
         settings.license = trialLicense;
         DB.setKV('settings', settings);
 
+        if (restaurantName) {
+            const branding = DB.getKV('branding', {});
+            branding.name = restaurantName;
+            DB.setKV('branding', branding);
+        }
+
         if (adminUser && adminPass) {
             const hash = await bcrypt.hash(adminPass, 10);
             DB.saveUsers([{ user: adminUser, pass: hash, role: 'admin' }]);
