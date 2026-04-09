@@ -41,11 +41,28 @@ body {
     z-index: 5000;
 }
 
-.login-container .login-header { text-align:center; margin-bottom:30px; }
-.login-container .logo { display:flex; align-items:center; justify-content:center; gap:12px; margin-bottom:12px; }
-.login-container .logo-icon { font-size:2.5rem; }
-.login-container .logo h1 { font-size:1.6rem; font-weight:700; }
-.login-container .login-header p { font-size:.85rem; color:var(--text-muted); }
+.login-wrapper {
+    position: relative;
+    width: 420px;
+    max-width: 95vw;
+}
+
+.login-logo-container {
+    position: absolute;
+    top: -100px; /* Pull the logo up out of the box */
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    width: 240px;
+    display: flex;
+    justify-content: center;
+}
+
+.login-logo {
+    max-width: 100%;
+    height: auto;
+    filter: drop-shadow(0 15px 25px rgba(0,0,0,0.25));
+}
 
 .login-form {
     background: var(--glass-solid);
@@ -53,9 +70,16 @@ body {
     border: var(--glass-border);
     border-radius: var(--radius);
     box-shadow: var(--glass-shadow);
-    padding: 50px 40px;
-    width: 420px;
-    max-width: 95vw;
+    padding: 90px 40px 40px 40px; /* Space for the overlapping logo */
+    width: 100%;
+}
+
+.login-welcome-text {
+    text-align: center;
+    font-size: .95rem;
+    color: var(--text);
+    margin-bottom: 20px;
+    font-weight: 500;
 }
 
 .input-group { margin-bottom:16px; }

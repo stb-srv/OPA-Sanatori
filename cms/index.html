@@ -17,43 +17,42 @@
 <body>
     <!-- Login Screen -->
     <main class="login-container" id="login-container">
-        <header class="login-header">
-            <div class="logo">
-                <span class="logo-icon">🏛️</span>
-                <h1>Grieche-CMS</h1>
+        <div class="login-wrapper">
+            <div class="login-logo-container">
+                <img src="assets/logo.png" alt="OPA! Santorini" class="login-logo" onerror="this.style.display='none'">
             </div>
-            <p>Willkommen zurück. Bitte loggen Sie sich ein.</p>
-        </header>
-        <form id="login-form" class="login-form">
-            <h2 style="margin-bottom:24px; font-size:1.4rem; font-weight:700;">Login</h2>
-            <div class="input-group">
-                <label for="username">Benutzername</label>
-                <input type="text" name="username" id="username" placeholder="Dein Benutzername" required>
-            </div>
-            <div class="input-group">
-                <label for="password">Passwort</label>
-                <input type="password" name="password" id="password" placeholder="••••••••" required>
-            </div>
-            <button type="submit" class="btn-login">Sicher anmelden</button>
-        </form>
+            <form id="login-form" class="login-form">
+                <p class="login-welcome-text">Willkommen zurück, Bitte loggen Sie sich ein.</p>
+                <h2 style="margin-bottom:24px; font-size:1.4rem; font-weight:700;">Login</h2>
+                <div class="input-group">
+                    <label for="username">Benutzername</label>
+                    <input type="text" name="username" id="username" placeholder="admin" required>
+                </div>
+                <div class="input-group">
+                    <label for="password">Passwort</label>
+                    <input type="password" name="password" id="password" placeholder="••••••••" required>
+                </div>
+                <button type="submit" class="btn-login">Sicher anmelden</button>
+            </form>
+        </div>
     </main>
 
     <!-- Force Password Change Screen -->
     <main class="login-container" id="password-change-container" style="display:none;">
-        <header class="login-header">
-            <div class="logo">
-                <span class="logo-icon">🔒</span>
-                <h1>Sicherheit</h1>
+        <div class="login-wrapper">
+            <div class="login-logo-container">
+                <img src="assets/logo.png" alt="OPA! Santorini" class="login-logo" onerror="this.style.display='none'">
             </div>
-            <p>Bitte ändern Sie Ihr Passwort für den ersten Zugang.</p>
-        </header>
-        <form id="password-change-form" class="login-form">
-            <div class="input-group">
-                <label for="new-password">Neues Passwort (min. 6 Zeichen)</label>
-                <input type="password" id="new-password" placeholder="Neues Passwort" required minlength="6">
-            </div>
-            <button type="submit" class="btn-login">Passwort speichern & Login</button>
-        </form>
+            <form id="password-change-form" class="login-form">
+                <p class="login-welcome-text" style="font-size:0.9rem">Bitte ändern Sie Ihr Passwort für den ersten Zugang.</p>
+                <h2 style="margin-bottom:24px; font-size:1.4rem; font-weight:700;">Sicherheit</h2>
+                <div class="input-group">
+                    <label for="new-password">Neues Passwort (min. 6 Zeichen)</label>
+                    <input type="password" id="new-password" placeholder="Neues Passwort" required minlength="6">
+                </div>
+                <button type="submit" class="btn-login">Passwort speichern & Login</button>
+            </form>
+        </div>
     </main>
 
     <!-- Admin Dashboard -->
