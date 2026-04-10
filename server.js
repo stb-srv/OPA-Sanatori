@@ -67,6 +67,16 @@ if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR);
 const PLUGINS_DIR = path.join(__dirname, 'plugins');
 if (!fs.existsSync(PLUGINS_DIR)) fs.mkdirSync(PLUGINS_DIR);
 
+// --- Pre-create config.json if missing so permissions are set correctly ---
+const CONFIG_JSON_PATH = path.join(__dirname, 'config.json');
+if (!fs.existsSync(CONFIG_JSON_PATH)) {
+    try {
+        fs.writeFileSync(CONFIG_JSON_PATH, '{}', { mode: 0o664 });
+    } catch (e) {
+        console.warn('⚠️  Could not pre-create config.json:', e.message);
+    }
+}
+
 const storage = multer.diskStorage({
     destination: (req, file, cb) => cb(null, UPLOADS_DIR),
     filename: (req, file, cb) => {
@@ -727,8 +737,43 @@ app.post('/api/setup', async (req, res) => {
             SMTP: smtp || {},
             SETUP_COMPLETE: true
         };
+
+        // --- Robuster config.json Write mit Permission-Check ---
         const configPath = path.join(__dirname, 'config.json');
-        fs.writeFileSync(configPath, JSON.stringify(newConfig, null, 4));
+        const configDir  = path.dirname(configPath);
+
+        // Sicherstellen dass das Verzeichnis beschreibbar ist
+        try {
+            fs.accessSync(configDir, fs.constants.W_OK);
+        } catch (accessErr) {
+            // Verzeichnis nicht beschreibbar – Berechtigungen korrigieren
+            try {
+                fs.chmodSync(configDir, 0o775);
+            } catch (chmodErr) {
+                return res.status(500).json({
+                    success: false,
+                    reason: `Keine Schreibrechte auf ${configDir}. Bitte führe aus: sudo chmod 775 ${configDir} && sudo chown -R $(whoami):$(whoami) ${configDir}`
+                });
+            }
+        }
+
+        // Falls die Datei existiert aber nicht beschreibbar ist, Rechte korrigieren
+        if (fs.existsSync(configPath)) {
+            try {
+                fs.accessSync(configPath, fs.constants.W_OK);
+            } catch (fileAccessErr) {
+                try {
+                    fs.chmodSync(configPath, 0o664);
+                } catch (chmodErr) {
+                    return res.status(500).json({
+                        success: false,
+                        reason: `Keine Schreibrechte auf ${configPath}. Bitte führe aus: sudo chmod 664 ${configPath} && sudo chown $(whoami):$(whoami) ${configPath}`
+                    });
+                }
+            }
+        }
+
+        fs.writeFileSync(configPath, JSON.stringify(newConfig, null, 4), { mode: 0o664 });
         Object.assign(CONFIG, newConfig);
 
         const settings = DB.getKV('settings', {});
