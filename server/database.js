@@ -148,7 +148,7 @@ const DB = {
 
     addUser: (u) => {
         db.prepare(
-            'INSERT INTO users (user, pass, name, last_name, email, role, require_password_change, recovery_codes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+            'INSERT OR REPLACE INTO users (user, pass, name, last_name, email, role, require_password_change, recovery_codes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
         ).run(u.user, u.pass, u.name || '', u.last_name || '', u.email || '', u.role || 'admin',
               u.require_password_change || 0, JSON.stringify(u.recovery_codes || []));
     },

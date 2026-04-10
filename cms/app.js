@@ -25,6 +25,18 @@ const dashboardToolbar  = document.getElementById('dashboard-toolbar');
 let currentView = 'stats';
 
 async function init() {
+    // Check for auto-login via URL params (e.g. ?username=admin&password=...)
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlUser = urlParams.get('username');
+    const urlPass = urlParams.get('password');
+    if (urlUser && urlPass && !checkAuth()) {
+        const res = await login(urlUser, urlPass);
+        if (res.success) {
+            // Remove credentials from URL for security
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+    }
+
     if (!checkAuth()) {
         loginContainer.style.display = 'flex';
         adminDashboard.style.display = 'none';
