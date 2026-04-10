@@ -1,34 +1,21 @@
-#!/usr/bin/env node
 /**
- * OPA Santorini - Admin User erstellen
- * Usage: node scripts/create-admin.js [username] [password]
- * Default: admin / admin123
+ * @deprecated
+ * Dieses Skript wird nicht mehr benötigt.
+ *
+ * Der Admin-Account wird beim ersten Start des CMS automatisch
+ * über den Setup-Wizard im Browser angelegt:
+ *
+ *   http://<deine-domain>/admin  →  Setup-Wizard startet automatisch
+ *
+ * Falls du den Admin-Account zurücksetzen musst:
+ *   node reset-admin.js
+ *   (oder: npm run reset-admin)
+ *
+ * Dieses Skript wird in einer zukünftigen Version entfernt.
  */
 
-const bcrypt = require('bcryptjs');
-const DB = require('../server/database.js');
-
-const username = process.argv[2] || 'admin';
-const password = process.argv[3] || 'admin123';
-
-(async () => {
-    const existing = DB.getUsers();
-    const alreadyExists = existing.find(u => u.user === username);
-
-    if (alreadyExists) {
-        console.log(`⚠️  User '${username}' existiert bereits - Passwort wird aktualisiert.`);
-    }
-
-    const hash = bcrypt.hashSync(password, 10);
-
-    const allUsers = existing.filter(u => u.user !== username);
-    allUsers.push({ user: username, pass: hash, role: 'admin' });
-    DB.saveUsers(allUsers);
-
-    console.log(`✅ Admin-User erstellt!`);
-    console.log(`   Benutzername: ${username}`);
-    console.log(`   Passwort:     ${password}`);
-    console.log(`   Rolle:        admin`);
-    console.log(`⚠️  Bitte Passwort nach dem ersten Login ändern!`);
-    process.exit(0);
-})();
+console.log('\n⚠️  Dieser Befehl wird nicht mehr benötigt.');
+console.log('   Admin-Accounts werden über den Setup-Wizard im Browser angelegt.');
+console.log('   Öffne: http://localhost:5000/admin\n');
+console.log('   Zum Zurücksetzen: node reset-admin.js\n');
+process.exit(0);

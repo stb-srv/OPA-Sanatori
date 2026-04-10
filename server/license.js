@@ -1,5 +1,5 @@
 /**
- * OPA Santorini - License Plan Definitions & Helpers
+ * OPA-CMS - License Plan Definitions & Helpers
  * Single source of truth for all plan limits and modules.
  */
 
@@ -76,31 +76,46 @@ const PLAN_DEFINITIONS = {
     }
 };
 
-/**
- * Returns the plan definition for a given type string.
- * Falls back to FREE if unknown.
- */
-const getPlan = (type) => {
-    return PLAN_DEFINITIONS[type] || PLAN_DEFINITIONS['FREE'];
-};
+const getPlan = (type) => PLAN_DEFINITIONS[type] || PLAN_DEFINITIONS['FREE'];
 
 /**
- * Returns the current active license from DB settings.
- * Falls back to FREE plan limits if no license is set.
+ * Gibt die aktuelle Lizenz aus den DB-Settings zurück.
+ * Enthält zusätzlich:
+ *   isTrial      – true wenn Trial-Lizenz
+ *   isExpired    – true wenn Ablaufdatum überschritten
+ *   trialDaysLeft – verbleibende Trial-Tage (nur wenn isTrial)
  */
 const getCurrentLicense = (DB) => {
     const settings = DB.getKV('settings', {});
     const lic = settings.license || {};
     const plan = getPlan(lic.type);
+
+    const now = new Date();
+    const expiresAt = lic.expiresAt ? new Date(lic.expiresAt) : null;
+    const isExpired = expiresAt ? expiresAt < now : false;
+    const isTrial = !!lic.isTrial;
+    const trialDaysLeft = isTrial && expiresAt && !isExpired
+        ? Math.max(0, Math.ceil((expiresAt - now) / (1000 * 60 * 60 * 24)))
+        : 0;
+
+    // Abgelaufene Trial-Lizenz → auf FREE-Limits zurückfallen
+    const effectiveModules = isExpired && isTrial ? plan.modules : (lic.modules || plan.modules);
+    const effectiveLimits  = isExpired && isTrial
+        ? { max_dishes: plan.menu_items, max_tables: plan.max_tables }
+        : (lic.limits || { max_dishes: plan.menu_items, max_tables: plan.max_tables });
+
     return {
-        key: lic.key || null,
-        status: lic.status || 'free',
-        customer: lic.customer || 'Testmodus',
-        type: lic.type || 'FREE',
-        label: plan.label,
-        expiresAt: lic.expiresAt || null,
-        modules: lic.modules || plan.modules,
-        limits: lic.limits || { max_dishes: plan.menu_items, max_tables: plan.max_tables },
+        key:          lic.key    || null,
+        status:       isExpired ? 'expired' : (lic.status || 'free'),
+        customer:     lic.customer || 'Testmodus',
+        type:         lic.type   || 'FREE',
+        label:        plan.label,
+        expiresAt:    lic.expiresAt || null,
+        modules:      effectiveModules,
+        limits:       effectiveLimits,
+        isTrial,
+        isExpired,
+        trialDaysLeft,
         plan
     };
 };
