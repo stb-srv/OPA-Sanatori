@@ -7,7 +7,10 @@ const path = require('path');
 
 try { require('dotenv').config(); } catch(e) {}
 
-const CONFIG_PATH = path.join(__dirname, 'config.json');
+let CONFIG_PATH = path.join(__dirname, 'server', 'config.json');
+if (!fs.existsSync(CONFIG_PATH) && fs.existsSync(path.join(__dirname, 'config.json'))) {
+    CONFIG_PATH = path.join(__dirname, 'config.json');
+}
 
 const DEFAULT_CONFIG = {
     LICENSE_SERVER_URL: process.env.LICENSE_SERVER_URL || 'https://licens-prod.stb-srv.de',

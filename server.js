@@ -623,8 +623,22 @@ app.post('/api/setup', async (req, res) => {
             SMTP: smtp || {},
             SETUP_COMPLETE: true
         };
-        const configPath = path.join(__dirname, 'config.json');
-        fs.writeFileSync(configPath, JSON.stringify(newConfig, null, 4));
+        let configPath = path.join(__dirname, 'server', 'config.json');
+        if (!fs.existsSync(configPath) && fs.existsSync(path.join(__dirname, 'config.json'))) {
+            configPath = path.join(__dirname, 'config.json');
+        }
+
+        try {
+            fs.writeFileSync(configPath, JSON.stringify(newConfig, null, 4));
+        } catch (writeErr) {
+            if (writeErr.code === 'EACCES') {
+                return res.status(500).json({ 
+                    success: false, 
+                    reason: 'Berechtigungsfehler (EACCES): Kann config.json nicht speichern. Bitte stellen Sie sicher, dass der Ordner "server" Schreibrechte besitzt.' 
+                });
+            }
+            throw writeErr;
+        }
         Object.assign(CONFIG, newConfig);
 
         const settings = DB.getKV('settings', {});

@@ -36,7 +36,7 @@ if not exist "node_modules" (
 )
 
 REM --- config.json prüfen ---
-if not exist "config.json" (
+if not exist "config.json" if not exist "server\config.json" (
     call :warn "Keine config.json gefunden - Setup wird gestartet..."
     call :start_cms_setup
     goto :wait_for_enter

@@ -31,6 +31,7 @@ copy "server.js" "%TEMP_DIR%\"
 
 REM Entferne DB und Config aus dem Temp, falls mitkopiert
 if exist "%TEMP_DIR%\config.json" del "%TEMP_DIR%\config.json"
+if exist "%TEMP_DIR%\server\config.json" del "%TEMP_DIR%\server\config.json"
 if exist "%TEMP_DIR%\server\database.sqlite" del "%TEMP_DIR%\server\database.sqlite"
 
 echo 🤐 Komprimiere zu %ZIP_NAME%...

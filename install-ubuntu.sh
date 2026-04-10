@@ -45,9 +45,6 @@ echo
 read -rp "  Nginx als Reverse Proxy installieren? [J/n]: " INSTALL_NGINX
 INSTALL_NGINX=${INSTALL_NGINX:-J}
 
-read -rp "  Lizenzserver mitinstallieren? [J/n]: " INSTALL_LICENSE
-INSTALL_LICENSE=${INSTALL_LICENSE:-J}
-
 read -rp "  CMS Port [5000]: " CMS_PORT
 CMS_PORT=${CMS_PORT:-5000}
 
@@ -87,15 +84,9 @@ log_info "Installiere CMS-Abhängigkeiten..."
 npm install --silent
 log_ok "CMS npm-Pakete installiert"
 
-if [[ "${INSTALL_LICENSE,,}" == "j" || "${INSTALL_LICENSE,,}" == "y" ]] && [ -d "${INSTALL_DIR}/license-server" ]; then
-    log_info "Installiere Lizenzserver-Abhängigkeiten..."
-    cd "${INSTALL_DIR}/license-server" && npm install --silent && cd "${INSTALL_DIR}"
-    log_ok "Lizenzserver npm-Pakete installiert"
-fi
-
 log_step "Schritt 6/7: Verzeichnisse & Berechtigungen"
-mkdir -p "${INSTALL_DIR}/uploads" "${INSTALL_DIR}/tmp"
-chmod -R 775 "${INSTALL_DIR}/uploads" "${INSTALL_DIR}/tmp"
+mkdir -p "${INSTALL_DIR}/uploads" "${INSTALL_DIR}/tmp" "${INSTALL_DIR}/server"
+chmod -R 775 "${INSTALL_DIR}/uploads" "${INSTALL_DIR}/tmp" "${INSTALL_DIR}/server"
 chown -R "${SCRIPT_USER}:${SCRIPT_USER}" "${INSTALL_DIR}"
 log_ok "Berechtigungen gesetzt"
 
@@ -103,19 +94,11 @@ log_step "Schritt 7/7: PM2 Services starten"
 
 # Bestehende PM2-Prozesse entfernen falls vorhanden
 pm2 delete opa-cms 2>/dev/null || true
-pm2 delete opa-license 2>/dev/null || true
 
 pm2 start "${INSTALL_DIR}/server.js" \
     --name "opa-cms" \
     --env production \
     -- --port "${CMS_PORT}"
-
-if [[ "${INSTALL_LICENSE,,}" == "j" || "${INSTALL_LICENSE,,}" == "y" ]] && [ -d "${INSTALL_DIR}/license-server" ]; then
-    pm2 start "${INSTALL_DIR}/license-server/server.js" \
-        --name "opa-license" \
-        --interpreter node
-    log_ok "Lizenzserver gestartet (Port 4000)"
-fi
 
 pm2 save
 PM2_STARTUP=$(pm2 startup systemd -u "${SCRIPT_USER}" --hp "/home/${SCRIPT_USER}" 2>&1 | grep 'sudo' | tail -1)
@@ -172,9 +155,7 @@ echo -e "${NC}"
 echo
 echo "  CMS URL:      http://${SERVER_DOMAIN}"
 echo "  Admin Panel:  http://${SERVER_DOMAIN}/admin"
-if [[ "${INSTALL_LICENSE,,}" == "j" || "${INSTALL_LICENSE,,}" == "y" ]]; then
-echo "  Lizenzserver: http://${SERVER_DOMAIN}:4000"
-fi
+
 echo
 echo "  ┌─────────────────────────────────────────────────────┐"
 echo "  │  Nützliche Befehle:                                  │"
