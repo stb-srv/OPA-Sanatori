@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==============================================================================
-#  OPA! Santorini - Linux Installations-Skript
+#  OPA-CMS - Linux Installations-Skript
 #  Getestet auf: Ubuntu 22.04 / 24.04, Debian 12, Rocky Linux 9
 # ==============================================================================
 #  Nutzung:
@@ -34,7 +34,7 @@ SCRIPT_USER="${SUDO_USER:-$(whoami)}"
 clear
 echo -e "${BOLD}"
 echo "  ╔══════════════════════════════════════════════════════╗"
-echo "  ║        OPA! Santorini - Linux Installer v2.0        ║"
+echo "  ║         OPA-CMS - Linux Installer v3.0              ║"
 echo "  ╚══════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 log_info "Installationsverzeichnis: ${INSTALL_DIR}"
@@ -60,19 +60,13 @@ if [ ! -f "${INSTALL_DIR}/.env" ]; then
     log_info "Keine .env gefunden – wird aus .env.example erstellt..."
     cp "${INSTALL_DIR}/.env.example" "${INSTALL_DIR}/.env"
 
-    # PORT und CORS_ORIGINS direkt aus den Installer-Eingaben befüllen
     sed -i "s|^PORT=.*|PORT=${CMS_PORT}|" "${INSTALL_DIR}/.env"
     sed -i "s|^CORS_ORIGINS=.*|CORS_ORIGINS=http://${SERVER_DOMAIN}|" "${INSTALL_DIR}/.env"
 
-    # Zufälligen ADMIN_SECRET generieren (32 Byte hex)
     GENERATED_SECRET=$(openssl rand -hex 32 2>/dev/null || cat /proc/sys/kernel/random/uuid | tr -d '-')
     sed -i "s|^ADMIN_SECRET=.*|ADMIN_SECRET=${GENERATED_SECRET}|" "${INSTALL_DIR}/.env"
 
     log_ok ".env erstellt (PORT=${CMS_PORT}, CORS=${SERVER_DOMAIN}, ADMIN_SECRET=auto-generated)"
-    echo
-    log_warn "SMTP noch nicht konfiguriert – E-Mail-Versand (Reservierungen) funktioniert erst nach Anpassen von:"
-    echo "        ${INSTALL_DIR}/.env"
-    echo
 else
     log_warn ".env bereits vorhanden – wird nicht überschrieben."
 fi
@@ -181,6 +175,24 @@ EOF
         ufw allow 'Nginx Full' --force >>/dev/null 2>&1 || true
         log_ok "Firewall: Port 80/443 freigegeben"
     fi
+
+    # --- HTTPS via Certbot (optional) ---
+    read -rp "  SSL/HTTPS via Let's Encrypt einrichten? (Domain muss auf diesen Server zeigen) [J/n]: " INSTALL_SSL
+    INSTALL_SSL=${INSTALL_SSL:-n}
+    if [[ "${INSTALL_SSL,,}" == "j" || "${INSTALL_SSL,,}" == "y" ]]; then
+        read -rp "  E-Mail für Let's Encrypt Benachrichtigungen: " LE_EMAIL
+        if [ -n "${LE_EMAIL}" ]; then
+            apt-get install -yq certbot python3-certbot-nginx
+            certbot --nginx -d "${SERVER_DOMAIN}" --non-interactive --agree-tos -m "${LE_EMAIL}" || \
+                log_warn "Certbot fehlgeschlagen – bitte manuell ausführen: certbot --nginx -d ${SERVER_DOMAIN}"
+            # CORS auf https umstellen
+            sed -i "s|^CORS_ORIGINS=http://|CORS_ORIGINS=https://|" "${INSTALL_DIR}/.env"
+            pm2 restart opa-cms
+            log_ok "HTTPS aktiviert, CORS_ORIGINS automatisch auf https umgestellt"
+        else
+            log_warn "Keine E-Mail angegeben – SSL übersprungen."
+        fi
+    fi
 fi
 
 # --- Zusammenfassung ---
@@ -205,12 +217,7 @@ echo "  │    pm2 restart opa-cms - CMS neustarten              │"
 echo "  │    pm2 monit           - Live Monitoring             │"
 echo "  └─────────────────────────────────────────────────────┘"
 echo
-if [[ "${INSTALL_NGINX,,}" == "j" || "${INSTALL_NGINX,,}" == "y" ]]; then
-    echo -e "  ${YELLOW}TIPP SSL/HTTPS:${NC}"
-    echo "    apt install certbot python3-certbot-nginx -y"
-    echo "    certbot --nginx -d ${SERVER_DOMAIN}"
-    echo
-fi
-log_warn "SMTP noch konfigurieren: nano ${INSTALL_DIR}/.env"
-log_ok "Setup-Wizard unter: http://${SERVER_DOMAIN}/setup"
+echo -e "  ${GREEN}✅ Setup-Wizard öffnen:${NC}  http://${SERVER_DOMAIN}/admin"
+echo -e "  ${GREEN}   Dort Admin-Zugangsdaten, SMTP & Lizenz einrichten –${NC}"
+echo -e "  ${GREEN}   alles im Browser, kein Konsolenzugriff mehr nötig.${NC}"
 echo

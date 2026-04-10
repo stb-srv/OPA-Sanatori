@@ -1,5 +1,6 @@
 /**
  * OPA-CMS GLOBAL CONFIGURATION
+ * Priorität: config.json (Setup-Wizard) > .env > Defaults
  */
 
 const fs = require('fs');
@@ -20,7 +21,7 @@ const DEFAULT_CONFIG = {
         secure: process.env.SMTP_SECURE !== 'false',
         user: process.env.SMTP_USER || '',
         pass: process.env.SMTP_PASS || '',
-        from: process.env.SMTP_FROM || '"OPA! Santorini" <noreply@restaurant.de>'
+        from: process.env.SMTP_FROM || ''
     },
     SETUP_COMPLETE: false
 };
@@ -31,10 +32,32 @@ if (fs.existsSync(CONFIG_PATH)) {
     try {
         const fileContent = fs.readFileSync(CONFIG_PATH, 'utf8');
         const loadedConfig = JSON.parse(fileContent);
-        CONFIG = { ...DEFAULT_CONFIG, ...loadedConfig, SETUP_COMPLETE: true };
-        // LICENSE_SERVER_URL immer auf prod setzen falls nicht explizit in config.json
+
+        // SMTP aus config.json (Setup-Wizard) hat Vorrang vor .env
+        // Nur gesetzte Felder überschreiben, leere .env-Werte bleiben als Fallback
+        const mergedSmtp = { ...DEFAULT_CONFIG.SMTP };
+        if (loadedConfig.SMTP) {
+            Object.keys(loadedConfig.SMTP).forEach(key => {
+                if (loadedConfig.SMTP[key] !== undefined && loadedConfig.SMTP[key] !== '') {
+                    mergedSmtp[key] = loadedConfig.SMTP[key];
+                }
+            });
+        }
+
+        CONFIG = {
+            ...DEFAULT_CONFIG,
+            ...loadedConfig,
+            SMTP: mergedSmtp,
+            SETUP_COMPLETE: true
+        };
+
         if (!loadedConfig.LICENSE_SERVER_URL) {
-            CONFIG.LICENSE_SERVER_URL = 'https://licens-prod.stb-srv.de';
+            CONFIG.LICENSE_SERVER_URL = process.env.LICENSE_SERVER_URL || 'https://licens-prod.stb-srv.de';
+        }
+        // PORT & ADMIN_SECRET aus .env haben Vorrang (Security: nie in config.json überschreiben)
+        if (process.env.PORT) CONFIG.PORT = parseInt(process.env.PORT);
+        if (process.env.ADMIN_SECRET && process.env.ADMIN_SECRET !== 'change-me-before-production') {
+            CONFIG.ADMIN_SECRET = process.env.ADMIN_SECRET;
         }
     } catch (e) {
         console.error('❌ Error loading config.json, using defaults:', e);
@@ -42,18 +65,7 @@ if (fs.existsSync(CONFIG_PATH)) {
 }
 
 if (!CONFIG.ADMIN_SECRET || CONFIG.ADMIN_SECRET === 'change-me-before-production') {
-    let wasLoadedFromConfig = false;
-    if (fs.existsSync(CONFIG_PATH)) {
-        try {
-            const fileContent = fs.readFileSync(CONFIG_PATH, 'utf8');
-            const parsed = JSON.parse(fileContent);
-            if (parsed.ADMIN_SECRET) wasLoadedFromConfig = true;
-        } catch(e) {}
-    }
-    
-    if (!wasLoadedFromConfig) {
-        console.warn('⚠️  WARNING: ADMIN_SECRET is not set in .env or config.json! Using insecure default.');
-    }
+    console.warn('⚠️  WARNING: ADMIN_SECRET ist nicht gesetzt! Bitte in .env setzen oder Setup-Wizard ausführen.');
 }
 
 module.exports = CONFIG;

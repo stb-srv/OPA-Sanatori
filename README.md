@@ -1,6 +1,6 @@
-# 🏛️ OPA! Santorini – Restaurant Management System
+# 🏛️ OPA-CMS – Restaurant Management System
 
-> Modulares CMS für Restaurants: Speisekarte, Reservierungen, Website-Editor, Lizenz-System & Plugin-API.
+> Modulares CMS für Restaurants: Speisekarte, Reservierungen, Website-Editor, Lizenz-System & Plugin-API.  
 > **Komplett über den Browser einrichtbar – keine Konsole oder Server-SSH nach der Installation nötig.**
 
 ---
@@ -9,6 +9,7 @@
 
 - [Voraussetzungen](#voraussetzungen)
 - [Linux Server Setup (Empfohlen)](#-linux-server-setup-empfohlen)
+- [Alternatives Deploy-Skript](#-alternatives-deploy-skript-systemd)
 - [Erster Start: Setup-Wizard](#-erster-start-setup-wizard)
 - [SMTP-Konfiguration im Browser](#-smtp-konfiguration-im-browser)
 - [Lizenz aktivieren](#-lizenz-aktivieren)
@@ -27,7 +28,7 @@
 
 **Linux Server (Produktion):**
 - Ubuntu 22.04 / 24.04, Debian 12 oder Rocky Linux 9
-- Root-Zugang (einmalig für `install-ubuntu.sh`)
+- Root-Zugang (einmalig für das Installer-Skript)
 - Offene Ports: 80, 443 (nginx), optional 5000
 
 **Lokal (Entwicklung):**
@@ -38,7 +39,7 @@
 
 ## 🚀 Linux Server Setup (Empfohlen)
 
-Dies ist der empfohlene Weg für den Produktivbetrieb. Das Skript erledigt **alles vollautomatisch** – nach dem einmaligen Ausführen wird **nichts mehr in der Konsole konfiguriert**.
+Dies ist der empfohlene Weg für den Produktivbetrieb mit **PM2** als Prozessmanager. Das Skript erledigt alles vollautomatisch.
 
 ```bash
 # 1. Repository klonen
@@ -59,11 +60,31 @@ sudo ./install-ubuntu.sh
 | PM2 | Prozessmanager mit Autostart nach Reboot |
 | `.env` | Wird automatisch erstellt – PORT, CORS & ADMIN_SECRET befüllt |
 | nginx | Reverse Proxy für Port 80 (optional) |
+| SSL / HTTPS | Let's Encrypt via Certbot (optional, Domain muss zeigen) |
 | Firewall (UFW) | Port 80/443 freigegeben, 5000 nur lokal |
 
 Nach dem Installer läuft das CMS sofort unter `http://<deine-domain>/admin`.
 
 > ✅ **Ab hier ist kein Konsolenzugriff mehr nötig.** Alle weiteren Einstellungen (SMTP, Lizenz, Restaurant-Name, Admin-Passwort) werden direkt im Browser erledigt.
+
+---
+
+## 🔧 Alternatives Deploy-Skript (systemd)
+
+Alternative zu `install-ubuntu.sh` – nutzt **systemd** statt PM2 und eignet sich für Server ohne vorhandenes PM2-Setup.
+
+```bash
+git clone https://github.com/stb-srv/OPA-Santorini.git /opt/opa-santorini
+cd /opt/opa-santorini
+bash deploy.sh
+```
+
+| Merkmal | `install-ubuntu.sh` | `deploy.sh` |
+|---|---|---|
+| Prozessmanager | PM2 | systemd |
+| Zielgruppe | Shared-Server, mehrere Apps | Dedizierter Server, einfaches Setup |
+| HTTPS / Certbot | Optional (interaktiv) | Optional (interaktiv) |
+| Admin-Erstellung | Via Setup-Wizard im Browser | Via Setup-Wizard im Browser |
 
 ---
 
@@ -96,9 +117,9 @@ Die E-Mail-Konfiguration für Reservierungsbestätigungen wird **vollständig im
 | Sicher (SSL) | `✓` | Ein bei Port 465 |
 | Benutzername | `info@meinrestaurant.de` | Dein E-Mail-Login |
 | Passwort | `dein-smtp-passwort` | E-Mail-Passwort |
-| Absender-Name | `OPA! Santorini` | Wird im E-Mail-Client angezeigt |
+| Absender-Name | `Mein Restaurant` | Wird im E-Mail-Client angezeigt |
 
-3. **Speichern** – eine Test-E-Mail wird automatisch verschickt
+3. **Speichern** klicken → eine Test-E-Mail wird automatisch an deine Admin-Adresse gesendet
 
 **Gängige SMTP-Einstellungen:**
 
@@ -134,7 +155,7 @@ Das System startet automatisch mit einem **kostenlosen 30-Tage-Trial** (FREE-Pla
 
 ## 🔄 System aktualisieren
 
-### One-Liner (Linux, empfohlen)
+### PM2-Setup (install-ubuntu.sh)
 
 ```bash
 cd /opt/opa-santorini && git pull && npm install --silent && pm2 restart opa-cms
@@ -146,11 +167,17 @@ Oder mit dem mitgelieferten Skript:
 ./update-mac-linux.sh
 ```
 
+### systemd-Setup (deploy.sh)
+
+```bash
+cd /opt/opa-santorini && git pull && npm install --silent && systemctl restart opa-santorini
+```
+
 ### Was beim Update passiert
 
 1. Neuen Code von GitHub pullen (`git pull`)
 2. Neue/geänderte npm-Pakete installieren
-3. CMS-Prozess in PM2 neu starten
+3. CMS-Prozess neu starten
 4. `.env`, Datenbank und alle Einstellungen bleiben **unangetastet**
 
 > ℹ️ Datenbankmigrationen (neue Spalten etc.) werden automatisch beim Start ausgeführt.
@@ -174,7 +201,10 @@ Nur wenn kein Recovery-Code mehr vorhanden ist:
 ```bash
 cd /opt/opa-santorini
 node reset-admin.js
+# PM2:
 pm2 restart opa-cms
+# systemd:
+systemctl restart opa-santorini
 ```
 
 Das Skript gibt die neuen Zugangsdaten direkt in der Konsole aus und erzwingt beim nächsten Login eine Passwortänderung.
@@ -194,10 +224,11 @@ chmod +x start-mac-linux.sh
 ```
 
 Beide Skripte:
-- Erstellen automatisch eine `.env` aus `.env.example` falls noch keine vorhanden ist
+- Erstellen automatisch eine `.env` aus `.env.example` (ADMIN_SECRET wird auto-generiert)
 - Installieren fehlende npm-Pakete
 - Starten den Server auf Port 5000
 - CMS erreichbar unter: `http://localhost:5000/admin`
+- Beim ersten Aufruf startet der **Setup-Wizard** automatisch
 
 ---
 
@@ -242,6 +273,7 @@ Beide Skripte:
 - Online-Buchung mit Echtzeit-Verfügbarkeitsprüfung
 - Tisch-Zuweisung & Kombinationstisch-Logik
 - Bestätigungs-/Storno-Links per E-Mail
+- POST-API für programmtische Cancel/Confirm-Aktionen
 - Warteliste / Anfrage-Modus wenn voll
 - Konfigurierbarer Puffer & Aufenthaltsdauer
 
@@ -262,11 +294,12 @@ Beide Skripte:
 - Aktivierung/Deaktivierung per Toggle im CMS
 
 ### 🔒 Sicherheit
-- CORS Origin-Whitelist (konfigurierbar über CORS_ORIGINS in `.env`)
+- CORS Origin-Whitelist (konfigurierbar über `CORS_ORIGINS` in `.env`)
 - Rate-Limiting auf Login & Reservierungen
 - bcrypt-Passwort-Hashing
 - JWT-Sessions mit 12h Ablauf
 - Recovery-Codes für Admin-Zugang
+- SMTP-Konfiguration dynamisch aus DB (kein Neustart bei Änderung)
 
 ---
 
@@ -280,7 +313,8 @@ Beide Skripte:
 | Realtime | Socket.io |
 | Frontend | Vanilla JS (ES Modules) |
 | Styling | CSS Custom Properties, Glassmorphism |
-| E-Mail | Nodemailer (SMTP) |
+| E-Mail | Nodemailer (SMTP, dynamisch aus DB) |
+| Prozessmanager | PM2 (install-ubuntu.sh) oder systemd (deploy.sh) |
 
 ---
 
@@ -289,14 +323,22 @@ Beide Skripte:
 ```
 /opt/opa-santorini/
 ├── server.js              # Express-Server & alle API-Routen
-├── config.js              # Konfiguration (Port, Secrets, SMTP)
-├── reset-admin.js         # Admin-Passwort zurücksetzen (Fallback)
+├── config.js              # Konfiguration (Port, Secrets, SMTP – Prio: config.json > .env)
+├── reset-admin.js         # Admin-Passwort zurücksetzen (Fallback, nur Konsole)
 ├── .env                   # Eure Konfiguration (NICHT committen!)
 ├── .env.example           # Vorlage für Umgebungsvariablen
+├── install-ubuntu.sh      # Vollautomatischer Server-Setup (PM2, Ubuntu/Debian)
+├── deploy.sh              # Alternatives Deploy-Skript (systemd)
+├── update-mac-linux.sh    # Update-Skript (Linux/Mac, PM2)
+├── start-mac-linux.sh     # Lokaler Start (Mac/Linux, Entwicklung)
+├── start-windows.bat      # Lokaler Start (Windows, Entwicklung)
 ├── server/
-│   ├── database.js        # SQLite-Datenbankschicht
+│   ├── database.js        # SQLite-Datenbankschicht (better-sqlite3)
 │   ├── license.js         # Lizenz-Logik & Plan-Definitionen
-│   └── mailer.js          # E-Mail-Versand (Nodemailer)
+│   ├── mailer.js          # E-Mail-Versand (Nodemailer, dynamischer SMTP)
+│   └── api.js             # ⚠️ Legacy / deprecated – nicht mehr aktiv
+├── scripts/
+│   └── create-admin.js    # Hilfsskript: Admin-User anlegen (Konsole)
 ├── cms/                   # Admin-Interface
 │   ├── index.html
 │   ├── setup.html         # Setup-Wizard (Ersteinrichtung)
@@ -306,10 +348,7 @@ Beide Skripte:
 ├── menu-app/              # Gäste-Frontend (Speisekarte)
 ├── plugins/               # Erweiterungen
 ├── uploads/               # Hochgeladene Bilder
-├── install-ubuntu.sh      # Vollautomatischer Server-Setup (Ubuntu/Debian)
-├── update-mac-linux.sh    # Update-Skript (Linux/Mac)
-├── start-mac-linux.sh     # Lokaler Start (Mac/Linux)
-└── start-windows.bat      # Lokaler Start (Windows)
+└── tmp/                   # Temporäre Dateien
 ```
 
 ---

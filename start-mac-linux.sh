@@ -1,7 +1,7 @@
 #!/bin/bash
 echo "=============================================================="
-echo " OPA! Santorini - Restaurant CMS"
-echo " Automatisches Setup-Skript (Mac/Linux)"
+echo " OPA-CMS - Restaurant Management System"
+echo " Lokaler Start (Mac / Linux)"
 echo "=============================================================="
 echo ""
 
@@ -9,19 +9,12 @@ echo ""
 if [ ! -f ".env" ]; then
     echo "[SETUP] Keine .env gefunden – wird automatisch aus .env.example erstellt..."
     cp .env.example .env
-    echo ""
-    echo "  ┌─────────────────────────────────────────────────────────────┐"
-    echo "  │  WICHTIG: .env wurde erstellt. Bitte jetzt anpassen:        │"
-    echo "  │                                                               │"
-    echo "  │    ADMIN_SECRET   = langen zufälligen String eintragen       │"
-    echo "  │    SMTP_HOST/USER = E-Mail-Zugangsdaten für Reservierungen   │"
-    echo "  │    CORS_ORIGINS   = Domain(s) die auf den Server zugreifen   │"
-    echo "  │                                                               │"
-    echo "  │  Datei öffnen mit:  nano .env                                │"
-    echo "  └─────────────────────────────────────────────────────────────┘"
-    echo ""
-    read -rp "  .env jetzt anpassen? Dann Enter drücken sobald fertig... "
-    echo ""
+    # Für lokale Entwicklung einen zufälligen Secret generieren
+    if command -v openssl &>/dev/null; then
+        SECRET=$(openssl rand -hex 32)
+        sed -i.bak "s|^ADMIN_SECRET=.*|ADMIN_SECRET=${SECRET}|" .env && rm -f .env.bak
+    fi
+    echo "[OK] .env erstellt."
 else
     echo "[OK] .env gefunden."
 fi
@@ -29,17 +22,20 @@ fi
 echo "[1/2] Installiere Abhängigkeiten (Node.js Modules)..."
 npm install --silent
 if [ $? -ne 0 ]; then
-    echo "Fehler bei npm install. Bitte Node.js prüfen!"
+    echo "Fehler bei npm install. Bitte Node.js >= 18 prüfen!"
     exit 1
 fi
 
-echo "[2/2] Installation erfolgreich! Starte Server..."
+echo "[2/2] Starte Server..."
 echo ""
 echo "=============================================================="
-echo " Das CMS ist erreichbar unter:"
-echo " - Admin:    http://localhost:5000/admin"
-echo " - Speisekarte: http://localhost:5000/"
+echo " CMS erreichbar unter:"
+echo " → Admin-Panel:  http://localhost:5000/admin"
+echo " → Gäste-Seite:  http://localhost:5000/"
+echo ""
 echo " Beim ersten Aufruf startet der Setup-Wizard automatisch."
+echo " Dort Admin-Zugangsdaten, SMTP & Lizenz einrichten –"
+echo " alles im Browser, keine weiteren Konsolenbefehle nötig."
 echo "=============================================================="
 echo ""
 
