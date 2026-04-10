@@ -13,6 +13,7 @@ const CONFIG = require('./config.js');
 const DB = require('./server/database.js');
 const Mailer = require('./server/mailer.js');
 const { getCurrentLicense, PLAN_DEFINITIONS } = require('./server/license.js');
+const { version: APP_VERSION } = require('./package.json');
 
 const app = express();
 const server = require('http').createServer(app);
@@ -21,17 +22,20 @@ app.set('trust proxy', 1);
 const PORT = CONFIG.PORT || 5000;
 const ADMIN_SECRET = CONFIG.ADMIN_SECRET;
 
-// Trailing Slash aus LICENSE_SERVER_URL entfernen (defensiv)
 const LICENSE_SERVER = (CONFIG.LICENSE_SERVER_URL || 'https://licens-prod.stb-srv.de').replace(/\/+$/, '');
 
-// --- CORS ---
-const rawOrigins = process.env.CORS_ORIGINS || '';
+// --- CORS – CONFIG hat Vorrang (liest bereits .env + config.json) ---
+const rawOrigins = CONFIG.CORS_ORIGINS || process.env.CORS_ORIGINS || '';
 const allowedOrigins = rawOrigins
     ? rawOrigins.split(',').map(o => o.trim()).filter(Boolean)
     : ['http://localhost:3000', 'http://localhost:5000'];
 
 app.use(cors({
-    origin: (origin, callback) => callback(null, true),
+    origin: (origin, callback) => {
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.includes(origin)) return callback(null, true);
+        return callback(new Error(`CORS: Origin '${origin}' nicht erlaubt.`));
+    },
     credentials: true
 }));
 app.use(express.json());
@@ -62,6 +66,16 @@ const UPLOADS_DIR = path.join(__dirname, 'uploads');
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR);
 const PLUGINS_DIR = path.join(__dirname, 'plugins');
 if (!fs.existsSync(PLUGINS_DIR)) fs.mkdirSync(PLUGINS_DIR);
+
+// --- Pre-create config.json if missing so permissions are set correctly ---
+const CONFIG_JSON_PATH = path.join(__dirname, 'config.json');
+if (!fs.existsSync(CONFIG_JSON_PATH)) {
+    try {
+        fs.writeFileSync(CONFIG_JSON_PATH, '{}', { mode: 0o664 });
+    } catch (e) {
+        console.warn('⚠️  Could not pre-create config.json:', e.message);
+    }
+}
 
 const storage = multer.diskStorage({
     destination: (req, file, cb) => cb(null, UPLOADS_DIR),
@@ -127,7 +141,7 @@ const findAvailableTables = (date, startTime, duration, guestCount, areaId = nul
     if (dayConfig) {
         if (dayConfig.closed) return { success: false, reason: `Wir haben am ${dayKey} leider Ruhetag.` };
         const start = parseTime(startTime, date).getTime();
-        const open = parseTime(dayConfig.open, date).getTime();
+        const open  = parseTime(dayConfig.open, date).getTime();
         const close = parseTime(dayConfig.close, date).getTime();
         if (start < open || start > close)
             return { success: false, reason: `Reservierung außerhalb der Öffnungszeiten (${dayConfig.open} - ${dayConfig.close} Uhr).` };
@@ -198,102 +212,134 @@ const requireMenuLimit = (req, res, next) => {
     next();
 };
 
-// --- API Routes ---
+// --- Hilfsfunktion: Styled Token-Antwort-Seite ---
+const tokenResponsePage = (DB, title, message, color, emoji) => {
+    const branding = DB.getKV('branding', {});
+    const restaurantName = branding.name || 'Restaurant';
+    const accentColor = branding.primaryColor || color;
+    return `<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${title} – ${restaurantName}</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+               background: #f7f8fa; display: flex; align-items: center;
+               justify-content: center; min-height: 100vh; padding: 20px; }
+        .card { background: #fff; border-radius: 16px; box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+                max-width: 480px; width: 100%; padding: 48px 40px; text-align: center; }
+        .emoji { font-size: 56px; margin-bottom: 20px; }
+        h1 { color: ${accentColor}; font-size: 1.6rem; margin-bottom: 12px; }
+        p  { color: #555; line-height: 1.6; font-size: 1rem; }
+        .restaurant { margin-top: 32px; padding-top: 20px; border-top: 1px solid #eee;
+                      color: #999; font-size: 0.85rem; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="emoji">${emoji}</div>
+        <h1>${title}</h1>
+        <p>${message}</p>
+        <div class="restaurant">${restaurantName}</div>
+    </div>
+</body>
+</html>`;
+};
+
+// =============================================================================
+// API Routes
+// =============================================================================
+
+// --- Health & Version ---
+app.get('/api/health', (req, res) => {
+    res.json({
+        status: 'ok',
+        version: APP_VERSION,
+        uptime: Math.floor(process.uptime()),
+        timestamp: new Date().toISOString()
+    });
+});
+
+app.get('/api/version', (req, res) => {
+    res.json({ version: APP_VERSION });
+});
+
+// --- Auth ---
 app.post('/api/admin/login', loginLimiter, async (req, res) => {
     const { user, pass } = req.body;
     const u = (DB.getUsers() || []).find(x => x.user === user);
     if (!u) return res.status(401).json({ success: false });
     let isValid = false;
     try { isValid = await bcrypt.compare(pass, u.pass); } catch(e) { isValid = false; }
-    if (!isValid && pass === u.pass) {
-        isValid = true;
-        const hashed = await bcrypt.hash(pass, 10);
-        DB.setUserPass(user, hashed);
-    }
+    // Kein Plaintext-Fallback mehr – nur bcrypt-Vergleich erlaubt
     if (isValid) {
         const requirePasswordChange = !!u.require_password_change;
         const token = jwt.sign({ user: u.user, role: u.role, requirePasswordChange }, ADMIN_SECRET, { expiresIn: '12h' });
         res.json({ success: true, token, user: { ...u, pass: undefined }, requirePasswordChange });
-    } else res.status(401).json({ success: false });
+    } else {
+        res.status(401).json({ success: false });
+    }
 });
 
 app.post('/api/admin/change-password', requireAuth, async (req, res) => {
     const { newPassword } = req.body;
-    if (!newPassword || newPassword.length < 6) return res.status(400).json({ success: false, reason: 'Passwort zu kurz.' });
-    
+    if (!newPassword || newPassword.length < 6) return res.status(400).json({ success: false, reason: 'Passwort zu kurz (min. 6 Zeichen).' });
     const hashed = await bcrypt.hash(newPassword, 10);
-    DB.setUserPass(req.admin.user, hashed);
-    
-    // Auto-login with fresh token
+    DB.setUserPass(req.admin.user, hashed, false);
     const token = jwt.sign({ user: req.admin.user, role: req.admin.role, requirePasswordChange: false }, ADMIN_SECRET, { expiresIn: '12h' });
     res.json({ success: true, token });
 });
 
+// --- Users ---
 app.get('/api/users', requireAuth, (req, res) => {
-    const safeUsers = DB.getUsers().map(u => {
-        const copy = { ...u };
-        delete copy.pass;
-        return copy;
-    });
+    const safeUsers = DB.getUsers().map(u => { const copy = { ...u }; delete copy.pass; return copy; });
     res.json(safeUsers);
 });
 app.post('/api/users', requireAuth, async (req, res) => {
     const u = req.body;
     const existing = DB.getUsers().find(x => x.user === u.user);
     if (existing) return res.status(400).json({ success: false, reason: 'Benutzername existiert bereits.' });
-
     const plainPass = crypto.randomBytes(4).toString('hex');
     u.pass = await bcrypt.hash(plainPass, 10);
     u.require_password_change = 1;
-    
     DB.addUser(u);
-    if (u.email) Mailer.sendUserCredentials(u.email, u.name, u.user, plainPass).catch(e => console.error(e));
-    
+    if (u.email) Mailer.sendUserCredentials(u.email, u.name, u.user, plainPass, DB).catch(e => console.error(e));
     res.json({ success: true });
 });
-
 app.put('/api/users/:user', requireAuth, (req, res) => {
     DB.updateUser(req.params.user, req.body);
     res.json({ success: true });
 });
-
 app.delete('/api/users/:user', requireAuth, (req, res) => {
     if (req.params.user === req.admin.user) return res.status(400).json({ success: false, reason: 'Kann sich selbst nicht löschen.' });
     DB.deleteUser(req.params.user);
     res.json({ success: true });
 });
-
 app.post('/api/users/:user/reset', requireAuth, async (req, res) => {
     const target = DB.getUsers().find(x => x.user === req.params.user);
     if (!target) return res.status(404).json({ success: false, reason: 'Benutzer nicht gefunden.' });
     if (!target.email) return res.status(400).json({ success: false, reason: 'Benutzer hat keine E-Mail Adresse hinterlegt.' });
-    
     const plainPass = crypto.randomBytes(4).toString('hex');
     const hashed = await bcrypt.hash(plainPass, 10);
-    DB.setUserPass(target.user, hashed); // Sets require_password_change to 0 by default
-    
-    // Force require change
-    const Database = require('better-sqlite3');
-    const db = new Database(require('path').join(__dirname, 'server', 'database.sqlite'));
-    db.prepare('UPDATE users SET require_password_change = 1 WHERE user = ?').run(target.user);
-    db.close();
-
-    if (target.email) Mailer.sendUserCredentials(target.email, target.name, target.user, plainPass).catch(e => console.error(e));
+    DB.setUserPass(target.user, hashed, true);
+    if (target.email) Mailer.sendUserCredentials(target.email, target.name, target.user, plainPass, DB).catch(e => console.error(e));
     res.json({ success: true });
 });
 
+// --- Menu ---
 app.get('/api/menu', (req, res) => res.json(DB.getMenu()));
 app.post('/api/menu', requireAuth, requireLicense('menu_edit'), (req, res) => {
-    // Check limit dynamically for a single insert
-    const lic = res.locals.license;
-    const maxDishes = lic?.limits?.maxDishes || 25;
+    const lic = getCurrentLicense(DB);
+    const maxDishes = lic.limits?.max_dishes ?? 10;
     const currentDishes = DB.getMenu().length;
     if (currentDishes >= maxDishes) {
         return res.status(403).json({ success: false, reason: `Ihr ${lic.label || lic.type}-Plan erlaubt maximal ${maxDishes} Speisen.` });
     }
     const m = req.body;
     m.id = m.id || Date.now().toString();
-    DB.addMenu(m); 
+    DB.addMenu(m);
     res.json({ success: true, id: m.id });
 });
 app.put('/api/menu/:id', requireAuth, requireLicense('menu_edit'), (req, res) => {
@@ -306,12 +352,11 @@ app.delete('/api/menu/:id', requireAuth, requireLicense('menu_edit'), (req, res)
     res.json({ success: true });
 });
 
+// --- Categories ---
 app.get('/api/categories', (req, res) => res.json(DB.getCategories()));
 app.post('/api/categories', requireAuth, (req, res) => {
-    const c = req.body;
-    c.id = c.id || Date.now().toString();
-    DB.addCategory(c);
-    res.json({ success: true, id: c.id });
+    const c = req.body; c.id = c.id || Date.now().toString();
+    DB.addCategory(c); res.json({ success: true, id: c.id });
 });
 app.put('/api/categories/:id', requireAuth, (req, res) => {
     const updated = DB.updateCategory(req.params.id, req.body);
@@ -319,20 +364,37 @@ app.put('/api/categories/:id', requireAuth, (req, res) => {
     res.json({ success: true, item: updated });
 });
 app.delete('/api/categories/:id', requireAuth, (req, res) => {
-    DB.deleteCategory(req.params.id);
-    res.json({ success: true });
+    DB.deleteCategory(req.params.id); res.json({ success: true });
 });
+
+// --- Allergens / Additives ---
 app.get('/api/allergens', (req, res) => res.json(DB.getKV('allergens', {})));
 app.post('/api/allergens', requireAuth, (req, res) => { DB.setKV('allergens', req.body); res.json({ success: true }); });
 app.get('/api/additives', (req, res) => res.json(DB.getKV('additives', {})));
 app.post('/api/additives', requireAuth, (req, res) => { DB.setKV('additives', req.body); res.json({ success: true }); });
+
+// --- Orders ---
 app.get('/api/orders', requireAuth, (req, res) => res.json(DB.getOrders()));
 app.post('/api/orders', reservationLimiter, (req, res) => {
     const newOrder = { ...req.body, id: Date.now().toString(), timestamp: new Date().toISOString(), status: 'pending' };
-    DB.addOrder(newOrder); io.emit('new-order', newOrder);
+    DB.addOrder(newOrder);
+    io.emit('new-order', newOrder);
     res.json({ success: true, order: newOrder });
 });
+app.put('/api/orders/:id', requireAuth, (req, res) => {
+    const { status } = req.body;
+    if (!status) return res.status(400).json({ success: false, reason: 'Status fehlt.' });
+    DB.updateOrderStatus(req.params.id, status);
+    const updated = DB.getOrderById(req.params.id);
+    io.emit('order-updated', updated);
+    res.json({ success: true, order: updated });
+});
+app.delete('/api/orders/:id', requireAuth, (req, res) => {
+    DB.deleteOrder(req.params.id);
+    res.json({ success: true });
+});
 
+// --- Reservations ---
 app.get('/api/reservations', requireAuth, (req, res) => res.json(DB.getReservations()));
 app.post('/api/reservations/check', reservationLimiter, (req, res) => {
     const settings = DB.getKV('settings', {});
@@ -340,7 +402,6 @@ app.post('/api/reservations/check', reservationLimiter, (req, res) => {
     const duration = calculateDuration(guests, settings.reservationConfig);
     res.json(findAvailableTables(date, time, duration, guests, areaId));
 });
-
 app.post('/api/reservations/availability-grid', reservationLimiter, (req, res) => {
     const settings = DB.getKV('settings', {});
     const { date, guests, areaId, times } = req.body;
@@ -352,16 +413,19 @@ app.post('/api/reservations/availability-grid', reservationLimiter, (req, res) =
     });
     res.json({ success: true, grid });
 });
-
 app.post('/api/reservations/submit', reservationLimiter, requireLicense('reservations'), (req, res) => {
     const settings = DB.getKV('settings', {});
     const rc = settings.reservationConfig || { allowInquiry: true };
-    const name = sanitizeText(req.body.name), email = sanitizeText(req.body.email),
-          phone = sanitizeText(req.body.phone), date = sanitizeText(req.body.date),
-          time = sanitizeText(req.body.time), guests = parseInt(req.body.guests) || 1,
-          note = sanitizeText(req.body.note), areaId = sanitizeText(req.body.areaId);
+    const name     = sanitizeText(req.body.name),
+          email    = sanitizeText(req.body.email),
+          phone    = sanitizeText(req.body.phone),
+          date     = sanitizeText(req.body.date),
+          time     = sanitizeText(req.body.time),
+          guests   = parseInt(req.body.guests) || 1,
+          note     = sanitizeText(req.body.note),
+          areaId   = sanitizeText(req.body.areaId);
     const duration = calculateDuration(guests, settings.reservationConfig);
-    const result = findAvailableTables(date, time, duration, guests, areaId);
+    const result   = findAvailableTables(date, time, duration, guests, areaId);
     if (!result.success && !rc.allowInquiry) return res.status(400).json({ success: false, reason: result.reason });
     const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
     if (email && !emailRegex.test(email)) return res.status(400).json({ success: false, reason: 'Bitte geben Sie eine gültige E-Mail-Adresse ein.' });
@@ -370,15 +434,15 @@ app.post('/api/reservations/submit', reservationLimiter, requireLicense('reserva
         id: Date.now(), token: crypto.randomBytes(32).toString('hex'),
         name, email, phone, date, time: time + ' Uhr', start_time: time,
         end_time: result.endTime || buildEndTime(time, duration),
-        guests, note: note || '', status, assigned_tables: result.success ? result.tables : [],
+        guests, note: note || '', status,
+        assigned_tables: result.success ? result.tables : [],
         submittedAt: new Date().toISOString(),
         ip: (req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split('.').slice(0,2).join('.') + '.x.x'
     };
     DB.addReservation(newRes);
-    Mailer.sendConfirmation(newRes).catch(e => console.error('Mailer error:', e));
+    Mailer.sendConfirmation(newRes, DB).catch(e => console.error('Mailer error:', e));
     res.json({ success: true, reservation: newRes, isInquiry: !result.success });
 });
-
 app.put('/api/reservations/:id', requireAuth, (req, res) => {
     const settings = DB.getKV('settings', {});
     const resId = parseInt(req.params.id);
@@ -399,41 +463,98 @@ app.put('/api/reservations/:id', requireAuth, (req, res) => {
     }
     const updated = DB.updateReservation(resId, update);
     if (updated && update.status && update.status !== old.status)
-        Mailer.sendStatusChange(updated).catch(e => console.error('Status mailer error:', e));
+        Mailer.sendStatusChange(updated, DB).catch(e => console.error('Status mailer error:', e));
     res.json({ success: true, reservation: updated });
 });
+app.delete('/api/reservations/:id', requireAuth, (req, res) => {
+    DB.deleteReservation(parseInt(req.params.id)); res.json({ success: true });
+});
+app.post('/api/reservations', requireAuth, (req, res) => {
+    DB.saveReservations(req.body); res.json({ success: true });
+});
 
-app.delete('/api/reservations/:id', requireAuth, (req, res) => { DB.deleteReservation(parseInt(req.params.id)); res.json({ success: true }); });
-app.post('/api/reservations', requireAuth, (req, res) => { DB.saveReservations(req.body); res.json({ success: true }); });
-
+// --- Reservierung Stornieren / Bestätigen via Token ---
+// GET: E-Mail-Links von Gästen – gibt styled HTML-Seite zurück
 app.get('/api/reservations/cancel/:token', (req, res) => {
-    const r = (DB.getReservations()||[]).find(x => x.token === req.params.token);
-    if (!r) return res.status(404).send('Ungültiger Link.');
+    const r = (DB.getReservations() || []).find(x => x.token === req.params.token);
+    if (!r) return res.status(404).send(tokenResponsePage(DB,
+        'Link ungültig',
+        'Dieser Link ist ungültig oder bereits abgelaufen.',
+        '#e53e3e', '❌'
+    ));
+    if (r.status === 'Cancelled') return res.send(tokenResponsePage(DB,
+        'Bereits storniert',
+        'Diese Reservierung wurde bereits storniert.',
+        '#718096', 'ℹ️'
+    ));
     const updated = DB.updateReservation(r.id, { status: 'Cancelled' });
-    if (updated) Mailer.sendStatusChange(updated).catch(e => console.error('Cancel mailer error:', e));
-    res.send('<h1>Reservierung erfolgreich storniert.</h1>');
+    if (updated) Mailer.sendStatusChange(updated, DB).catch(e => console.error('Cancel mailer error:', e));
+    res.send(tokenResponsePage(DB,
+        'Reservierung storniert',
+        `Ihre Reservierung für den <strong>${r.date}</strong> um <strong>${r.start_time} Uhr</strong> wurde erfolgreich storniert.<br><br>Wir hoffen, Sie bald wieder begrüßen zu dürfen.`,
+        '#e53e3e', '✅'
+    ));
 });
 
 app.get('/api/reservations/confirm/:token', (req, res) => {
-    const r = (DB.getReservations()||[]).find(x => x.token === req.params.token);
-    if (!r) return res.status(404).send('Ungültiger Link.');
+    const r = (DB.getReservations() || []).find(x => x.token === req.params.token);
+    if (!r) return res.status(404).send(tokenResponsePage(DB,
+        'Link ungültig',
+        'Dieser Link ist ungültig oder bereits abgelaufen.',
+        '#e53e3e', '❌'
+    ));
+    if (r.status === 'Confirmed') return res.send(tokenResponsePage(DB,
+        'Bereits bestätigt',
+        `Ihre Reservierung für den <strong>${r.date}</strong> um <strong>${r.start_time} Uhr</strong> ist bereits bestätigt. Wir freuen uns auf Ihren Besuch!`,
+        '#38a169', '✅'
+    ));
     const updated = DB.updateReservation(r.id, { status: 'Confirmed' });
-    if (updated) Mailer.sendStatusChange(updated).catch(e => console.error('Confirm mailer error:', e));
-    res.send('<h1>Reservierung erfolgreich bestätigt!</h1>');
+    if (updated) Mailer.sendStatusChange(updated, DB).catch(e => console.error('Confirm mailer error:', e));
+    res.send(tokenResponsePage(DB,
+        'Reservierung bestätigt!',
+        `Ihre Reservierung für den <strong>${r.date}</strong> um <strong>${r.start_time} Uhr</strong> für <strong>${r.guests} Person(en)</strong> ist jetzt bestätigt.<br><br>Wir freuen uns auf Ihren Besuch!`,
+        '#38a169', '🎉'
+    ));
 });
 
+// POST: programmatische / AJAX-Nutzung
+app.post('/api/reservations/cancel/:token', reservationLimiter, (req, res) => {
+    const r = (DB.getReservations() || []).find(x => x.token === req.params.token);
+    if (!r) return res.status(404).json({ success: false, reason: 'Ungültiger Token.' });
+    if (r.status === 'Cancelled') return res.json({ success: true, alreadyCancelled: true });
+    const updated = DB.updateReservation(r.id, { status: 'Cancelled' });
+    if (updated) Mailer.sendStatusChange(updated, DB).catch(e => console.error('Cancel mailer error:', e));
+    res.json({ success: true, reservation: updated });
+});
+app.post('/api/reservations/confirm/:token', reservationLimiter, (req, res) => {
+    const r = (DB.getReservations() || []).find(x => x.token === req.params.token);
+    if (!r) return res.status(404).json({ success: false, reason: 'Ungültiger Token.' });
+    if (r.status === 'Confirmed') return res.json({ success: true, alreadyConfirmed: true });
+    const updated = DB.updateReservation(r.id, { status: 'Confirmed' });
+    if (updated) Mailer.sendStatusChange(updated, DB).catch(e => console.error('Confirm mailer error:', e));
+    res.json({ success: true, reservation: updated });
+});
+
+// --- Tables ---
 app.get('/api/tables', (req, res) => res.json(DB.getTables()));
 app.post('/api/tables', requireAuth, (req, res) => { DB.saveTables(req.body); res.json({ success: true }); });
 
+// --- Homepage / Branding / Settings ---
 app.get('/api/homepage', (req, res) => {
     const settings = DB.getKV('settings', {});
     res.json({ ...DB.getKV('homepage', {}), activeModules: settings.activeModules });
 });
-app.post('/api/homepage', requireAuth, requireLicense('custom_design'), (req, res) => { DB.setKV('homepage', req.body); res.json({ success: true }); });
-
+app.post('/api/homepage', requireAuth, requireLicense('custom_design'), (req, res) => {
+    DB.setKV('homepage', req.body); res.json({ success: true });
+});
 app.get('/api/areas', (req, res) => res.json(DB.getKV('areas', [{ id:'main',name:'Gastraum' },{ id:'terrace',name:'Terrasse' }])));
 app.post('/api/areas', requireAuth, (req, res) => { DB.setKV('areas', req.body); res.json({ success: true }); });
+app.get('/api/branding', (req, res) => res.json(DB.getKV('branding', {})));
+app.post('/api/branding', requireAuth, (req, res) => { DB.setKV('branding', req.body); res.json({ success: true }); });
+app.get('/api/settings', requireAuth, (req, res) => res.json(DB.getKV('settings', {})));
+app.post('/api/settings', requireAuth, (req, res) => { DB.setKV('settings', req.body); res.json({ success: true }); });
 
+// --- Table Plan ---
 app.get('/api/table-plan', requireAuth, (req, res) => {
     let plan = DB.getKV('table_plan', null);
     if (!plan) {
@@ -448,7 +569,6 @@ app.get('/api/table-plan', requireAuth, (req, res) => {
     }
     res.json(plan);
 });
-
 app.post('/api/table-plan', requireAuth, (req, res) => {
     const plan = req.body;
     DB.setKV('table_plan', plan);
@@ -464,17 +584,29 @@ app.post('/api/table-plan', requireAuth, (req, res) => {
     res.json({ success: true });
 });
 
-app.get('/api/branding', (req, res) => res.json(DB.getKV('branding', {})));
-app.post('/api/branding', requireAuth, (req, res) => { DB.setKV('branding', req.body); res.json({ success: true }); });
-app.get('/api/settings', requireAuth, (req, res) => res.json(DB.getKV('settings', {})));
-app.post('/api/settings', requireAuth, (req, res) => { DB.setKV('settings', req.body); res.json({ success: true }); });
-
-// --- License API ---
-app.get('/api/license/info', requireAuth, (req, res) => {
-    const lic = getCurrentLicense(DB);
-    res.json({ ...lic, menu_items_used: (DB.getMenu()||[]).length, plans: PLAN_DEFINITIONS });
+// --- SMTP Test ---
+app.post('/api/settings/test-smtp', requireAuth, async (req, res) => {
+    const target = DB.getUsers().find(u => u.user === req.admin.user);
+    const toEmail = target?.email || req.body?.email;
+    if (!toEmail) return res.status(400).json({ success: false, reason: 'Keine Ziel-E-Mail-Adresse gefunden. Bitte in den Benutzereinstellungen hinterlegen.' });
+    try {
+        await Mailer.sendTestMail(toEmail, DB);
+        res.json({ success: true, sentTo: toEmail });
+    } catch (e) {
+        res.status(500).json({ success: false, reason: `SMTP Fehler: ${e.message}` });
+    }
 });
 
+// --- License ---
+app.get('/api/license/info', requireAuth, (req, res) => {
+    const lic = getCurrentLicense(DB);
+    res.json({
+        ...lic,
+        menu_items_used: (DB.getMenu() || []).length,
+        trialDaysLeft: lic.trialDaysLeft,
+        plans: PLAN_DEFINITIONS
+    });
+});
 app.post('/api/license/validate', async (req, res) => {
     try {
         const response = await fetch(`${LICENSE_SERVER}/api/v1/validate`, {
@@ -487,21 +619,17 @@ app.post('/api/license/validate', async (req, res) => {
             settings.license = {
                 key: req.body.key, status: 'active', customer: r.customer_name,
                 type: r.type, label: r.plan_label, expiresAt: r.expires_at,
-                modules: r.allowed_modules, limits: r.limits
+                modules: r.allowed_modules,
+                limits: { max_dishes: r.limits?.max_dishes ?? r.limits?.maxDishes ?? 10, max_tables: r.limits?.max_tables ?? r.limits?.maxTables ?? 5 }
             };
             DB.setKV('settings', settings);
             res.json({ success: true, license: settings.license });
         } else res.status(403).json({ success: false, reason: r.message });
     } catch (e) { res.status(500).json({ success: false, reason: 'Lizenzserver nicht erreichbar.' }); }
 });
-
-// --- License Module Override (Admin) ---
-// Erlaubt es einzelne Module pro Lizenz manuell zu aktivieren/deaktivieren
 app.post('/api/license/modules', requireAuth, (req, res) => {
     const { modules } = req.body;
-    if (!modules || typeof modules !== 'object') {
-        return res.status(400).json({ success: false, reason: 'Ungültige Module-Daten.' });
-    }
+    if (!modules || typeof modules !== 'object') return res.status(400).json({ success: false, reason: 'Ungültige Module-Daten.' });
     const settings = DB.getKV('settings', {});
     if (!settings.license) return res.status(400).json({ success: false, reason: 'Keine Lizenz aktiv.' });
     settings.license.modules = { ...settings.license.modules, ...modules };
@@ -509,7 +637,7 @@ app.post('/api/license/modules', requireAuth, (req, res) => {
     res.json({ success: true, modules: settings.license.modules });
 });
 
-// --- Menu Import (kein requireLicense – Import ist für alle Pläne erlaubt) ---
+// --- Menu Import ---
 app.post('/api/menu/import', requireAuth, (req, res) => {
     const { menu, categories, allergens, additives } = req.body;
     const lic = getCurrentLicense(DB);
@@ -528,7 +656,7 @@ app.post('/api/menu/import', requireAuth, (req, res) => {
     res.json({ success: true });
 });
 
-// --- Image Upload API ---
+// --- Image Upload ---
 app.post('/api/upload', requireAuth, upload.single('image'), (req, res) => {
     if (!req.file) return res.status(400).json({ success: false, reason: 'Keine Datei hochgeladen.' });
     res.json({ success: true, url: `/uploads/${req.file.filename}`, filename: req.file.filename, size: req.file.size });
@@ -539,7 +667,7 @@ app.delete('/api/upload/:filename', requireAuth, (req, res) => {
     res.status(404).json({ success: false });
 });
 
-// --- Plugin API ---
+// --- Plugins ---
 const getInstalledPlugins = () => {
     if (!fs.existsSync(PLUGINS_DIR)) return [];
     return fs.readdirSync(PLUGINS_DIR)
@@ -547,7 +675,6 @@ const getInstalledPlugins = () => {
         .map(dir => { try { return JSON.parse(fs.readFileSync(path.join(PLUGINS_DIR, dir, 'plugin.json'))); } catch(e) { return null; } })
         .filter(Boolean);
 };
-
 app.get('/api/plugins', requireAuth, (req, res) => {
     const installed = getInstalledPlugins(), dbPlugins = DB.getKV('plugins', []);
     res.json(installed.map(p => { const dbP = dbPlugins.find(x => x.id === p.id); return { ...p, enabled: dbP ? dbP.enabled : false }; }));
@@ -559,7 +686,6 @@ app.post('/api/plugins/toggle', requireAuth, (req, res) => {
     if (idx > -1) dbPlugins[idx].enabled = enabled; else dbPlugins.push({ id, enabled });
     DB.setKV('plugins', dbPlugins); res.json({ success: true });
 });
-
 const loadPluginServers = () => {
     const activePlugins = DB.getKV('plugins', []).filter(p => p.enabled);
     activePlugins.forEach(p => {
@@ -575,13 +701,15 @@ const loadPluginServers = () => {
 };
 loadPluginServers();
 
+// --- Static Files ---
 app.use('/plugins', express.static(PLUGINS_DIR));
 app.use('/uploads', express.static(UPLOADS_DIR));
 app.use('/admin', express.static(path.join(__dirname, 'cms')));
 app.use('/', express.static(path.join(__dirname, 'menu-app')));
 
+// --- Error Handler ---
 app.use((err, req, res, next) => {
-    console.error('❌ Server Error:', err);
+    console.error(`❌ [${new Date().toISOString()}] Server Error:`, err.message || err);
     res.status(err.status || 500).json({ success: false, reason: err.message || 'Interner Serverfehler.' });
 });
 
@@ -592,30 +720,16 @@ app.post('/api/setup', async (req, res) => {
         const { restaurantName, licenseServer, adminSecret, smtp, adminUser, adminPass, adminEmail } = req.body;
         const licenseServerUrl = (licenseServer || 'https://licens-prod.stb-srv.de').replace(/\/+$/, '');
 
-        let trialLicense = null;
-        try {
-            const trialPlan = PLAN_DEFINITIONS['FREE'];
-            trialLicense = {
-                key: 'OPA-TRIAL-' + crypto.randomBytes(4).toString('hex').toUpperCase() + '-' + new Date().getFullYear(),
-                status: 'trial', customer: restaurantName || 'Trial',
-                type: 'FREE', label: trialPlan.label,
-                expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-                modules: trialPlan.modules,
-                limits: { max_dishes: trialPlan.menu_items, max_tables: trialPlan.max_tables },
-                isTrial: true
-            };
-        } catch(e) {
-            const trialPlan = PLAN_DEFINITIONS['FREE'];
-            trialLicense = {
-                key: 'OPA-TRIAL-OFFLINE-' + crypto.randomBytes(4).toString('hex').toUpperCase(),
-                status: 'trial', customer: restaurantName || 'Trial',
-                type: 'FREE', label: trialPlan.label,
-                expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-                modules: trialPlan.modules,
-                limits: { max_dishes: trialPlan.menu_items, max_tables: trialPlan.max_tables },
-                isTrial: true
-            };
-        }
+        const trialPlan = PLAN_DEFINITIONS['FREE'];
+        const trialLicense = {
+            key: 'OPA-TRIAL-' + crypto.randomBytes(4).toString('hex').toUpperCase() + '-' + new Date().getFullYear(),
+            status: 'trial', customer: restaurantName || 'Trial',
+            type: 'FREE', label: trialPlan.label,
+            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+            modules: trialPlan.modules,
+            limits: { max_dishes: trialPlan.menu_items, max_tables: trialPlan.max_tables },
+            isTrial: true
+        };
 
         const newConfig = {
             LICENSE_SERVER_URL: licenseServerUrl,
@@ -623,26 +737,13 @@ app.post('/api/setup', async (req, res) => {
             SMTP: smtp || {},
             SETUP_COMPLETE: true
         };
-        let configPath = path.join(__dirname, 'server', 'config.json');
-        if (!fs.existsSync(configPath) && fs.existsSync(path.join(__dirname, 'config.json'))) {
-            configPath = path.join(__dirname, 'config.json');
-        }
-
-        try {
-            fs.writeFileSync(configPath, JSON.stringify(newConfig, null, 4));
-        } catch (writeErr) {
-            if (writeErr.code === 'EACCES') {
-                return res.status(500).json({ 
-                    success: false, 
-                    reason: 'Berechtigungsfehler (EACCES): Kann config.json nicht speichern. Bitte stellen Sie sicher, dass der Ordner "server" Schreibrechte besitzt.' 
-                });
-            }
-            throw writeErr;
-        }
+        const configPath = path.join(__dirname, 'config.json');
+        fs.writeFileSync(configPath, JSON.stringify(newConfig, null, 4));
         Object.assign(CONFIG, newConfig);
 
         const settings = DB.getKV('settings', {});
         settings.license = trialLicense;
+        if (smtp && smtp.host) settings.smtp = smtp;
         DB.setKV('settings', settings);
 
         if (restaurantName) {
@@ -664,31 +765,40 @@ app.post('/api/setup', async (req, res) => {
                 plainRecoveryCodes.push(code);
                 hashedCodes.push(await bcrypt.hash(code, 10));
             }
-            DB.addUser({ user: adminUser, pass: hash, name: 'Setup', last_name: 'Admin', email: adminEmail || '', role: 'admin', recovery_codes: hashedCodes });
+            DB.addUser({ user: adminUser, pass: hash, name: 'Setup', last_name: 'Admin',
+                         email: adminEmail || '', role: 'admin', recovery_codes: hashedCodes });
         }
 
         res.json({ success: true, trial: trialLicense, message: 'Setup abgeschlossen.', recovery_codes: plainRecoveryCodes });
     } catch (e) {
-        console.error('Setup error:', e);
+        console.error(`❌ [${new Date().toISOString()}] Setup error:`, e);
         res.status(500).json({ success: false, reason: e.message });
     }
 });
 
 app.get('/setup', (req, res) => res.sendFile(path.join(__dirname, 'cms', 'setup.html')));
 
-// --- Trial license cleanup job ---
+// --- Trial Cleanup Job (stündlich) ---
+// Setzt abgelaufene Trial-Lizenzen auf 'expired' statt sie zu löschen
 setInterval(() => {
-    const settings = DB.getKV('settings', {});
-    const lic = settings.license;
-    if (lic && lic.isTrial && lic.expiresAt && new Date(lic.expiresAt) < new Date()) {
-        console.log('⏰ Trial license expired - removing.');
-        delete settings.license;
-        DB.setKV('settings', settings);
+    try {
+        const settings = DB.getKV('settings', {});
+        const lic = settings.license;
+        if (lic && lic.isTrial && lic.expiresAt && new Date(lic.expiresAt) < new Date()) {
+            if (lic.status !== 'expired') {
+                console.log(`⏰ [${new Date().toISOString()}] Trial license expired – setting status to 'expired'.`);
+                lic.status = 'expired';
+                DB.setKV('settings', settings);
+            }
+        }
+    } catch (e) {
+        console.error('❌ Trial cleanup job error:', e.message);
     }
 }, 60 * 60 * 1000);
 
 server.listen(PORT, () => {
-    console.log(`\n🚀 RESTAURANT-CMS ONLINE ON PORT ${PORT}`);
-    console.log(`🔒 LICENSE SERVER: ${LICENSE_SERVER}`);
-    console.log(`🌐 CORS ORIGINS: ${allowedOrigins.join(', ')}\n`);
+    console.log(`\n🚀 OPA-CMS v${APP_VERSION} – Port ${PORT}`);
+    console.log(`🔒 License Server: ${LICENSE_SERVER}`);
+    console.log(`🌐 CORS Origins:   ${allowedOrigins.join(', ')}`);
+    console.log(`⏰ Started at:     ${new Date().toLocaleString('de-DE')}\n`);
 });

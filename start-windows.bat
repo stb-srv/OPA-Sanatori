@@ -1,24 +1,37 @@
 @echo off
 echo ==============================================================
-echo OPA! Santorini - Restaurant CMS
-echo Automatisches Setup-Skript
+echo OPA-CMS - Restaurant Management System
+echo Lokaler Start (Windows)
 echo ==============================================================
 echo.
 
-echo [1/3] Installiere grundlegende Abhaengigkeiten (Node.js Modules)...
+REM --- .env automatisch anlegen wenn nicht vorhanden ---
+if not exist ".env" (
+    echo [SETUP] Keine .env gefunden - wird automatisch aus .env.example erstellt...
+    copy .env.example .env >nul
+    echo [OK] .env erstellt.
+) else (
+    echo [OK] .env gefunden.
+)
+
+echo [1/2] Installiere Abhaengigkeiten (Node.js Modules)...
 call npm install --silent
 if %errorlevel% neq 0 (
-    echo Fehler bei npm install. Bitte Node.js prüfen!
+    echo Fehler bei npm install. Bitte Node.js ^>= 18 pruefen!
     pause
     exit /b %errorlevel%
 )
 
-echo [2/2] Installation erfolgreich! Starte nun alle Server...
+echo [2/2] Starte Server...
 echo.
 echo ==============================================================
-echo Das CMS ist gleich lokal auf folgendem Port erreichbar:
-echo - Frontend/Admin: http://localhost:5000/
-echo Lade den Setup-Wizard im Browser, sobald der Server laeuft.
+echo CMS erreichbar unter:
+echo   Admin-Panel:  http://localhost:5000/admin
+echo   Gaeste-Seite: http://localhost:5000/
+echo.
+echo Beim ersten Aufruf startet der Setup-Wizard automatisch.
+echo Dort Admin-Zugangsdaten, SMTP ^& Lizenz einrichten -
+echo alles im Browser, keine weiteren Konsolenbefehle noetig.
 echo ==============================================================
 echo.
 

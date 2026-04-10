@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==============================================================================
-#  OPA! Santorini - Linux Installations-Skript
+#  OPA-CMS - Linux Installations-Skript
 #  Getestet auf: Ubuntu 22.04 / 24.04, Debian 12, Rocky Linux 9
 # ==============================================================================
 #  Nutzung:
@@ -29,16 +29,32 @@ fi
 
 # --- Installationsverzeichnis ermitteln ---
 INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCRIPT_USER="${SUDO_USER:-$(whoami)}"
+
+# --- Service-User bestimmen ---
+# Wenn via `sudo` aufgerufen => SUDO_USER nutzen (normaler User-Account).
+# Wenn direkt als root eingeloggt (kein SUDO_USER) => dedizierten 'opa'-User
+# anlegen, damit der Node-Prozess NIEMALS als root läuft und stets
+# Schreibrechte auf config.json hat (verhindert EACCES-Fehler im Setup-Wizard).
+if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
+    SCRIPT_USER="${SUDO_USER}"
+else
+    SCRIPT_USER="opa"
+    if ! id -u opa &>/dev/null; then
+        useradd --system --create-home --shell /bin/bash --comment "OPA-CMS Service" opa
+        log_ok "System-User 'opa' angelegt"
+    else
+        log_warn "System-User 'opa' bereits vorhanden"
+    fi
+fi
 
 clear
 echo -e "${BOLD}"
 echo "  ╔══════════════════════════════════════════════════════╗"
-echo "  ║        OPA! Santorini - Linux Installer v2.0        ║"
+echo "  ║         OPA-CMS - Linux Installer v3.0              ║"
 echo "  ╚══════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 log_info "Installationsverzeichnis: ${INSTALL_DIR}"
-log_info "Benutzer: ${SCRIPT_USER}"
+log_info "Service-User: ${SCRIPT_USER}"
 echo
 
 # --- Optionen abfragen ---
@@ -51,13 +67,30 @@ CMS_PORT=${CMS_PORT:-5000}
 read -rp "  Domain/IP für Nginx (z.B. meinrestaurant.de oder 1.2.3.4): " SERVER_DOMAIN
 SERVER_DOMAIN=${SERVER_DOMAIN:-localhost}
 
+# --- .env automatisch anlegen wenn nicht vorhanden ---
+log_step ".env Konfiguration"
+if [ ! -f "${INSTALL_DIR}/.env" ]; then
+    log_info "Keine .env gefunden – wird aus .env.example erstellt..."
+    cp "${INSTALL_DIR}/.env.example" "${INSTALL_DIR}/.env"
+
+    sed -i "s|^PORT=.*|PORT=${CMS_PORT}|" "${INSTALL_DIR}/.env"
+    sed -i "s|^CORS_ORIGINS=.*|CORS_ORIGINS=http://${SERVER_DOMAIN}|" "${INSTALL_DIR}/.env"
+
+    GENERATED_SECRET=$(openssl rand -hex 32 2>/dev/null || cat /proc/sys/kernel/random/uuid | tr -d '-')
+    sed -i "s|^ADMIN_SECRET=.*|ADMIN_SECRET=${GENERATED_SECRET}|" "${INSTALL_DIR}/.env"
+
+    log_ok ".env erstellt (PORT=${CMS_PORT}, CORS=${SERVER_DOMAIN}, ADMIN_SECRET=auto-generated)"
+else
+    log_warn ".env bereits vorhanden – wird nicht überschrieben."
+fi
+
 echo
 log_step "Schritt 1/7: System aktualisieren"
 apt-get update -q && apt-get upgrade -yq
 log_ok "System aktualisiert"
 
 log_step "Schritt 2/7: Basis-Pakete installieren"
-apt-get install -yq curl git build-essential python3 ufw
+apt-get install -yq curl git build-essential python3 ufw openssl
 log_ok "Basis-Pakete installiert"
 
 log_step "Schritt 3/7: Node.js 20 LTS installieren"
@@ -85,20 +118,28 @@ npm install --silent
 log_ok "CMS npm-Pakete installiert"
 
 log_step "Schritt 6/7: Verzeichnisse & Berechtigungen"
-mkdir -p "${INSTALL_DIR}/uploads" "${INSTALL_DIR}/tmp" "${INSTALL_DIR}/server"
-chmod -R 775 "${INSTALL_DIR}/uploads" "${INSTALL_DIR}/tmp" "${INSTALL_DIR}/server"
+mkdir -p "${INSTALL_DIR}/uploads" "${INSTALL_DIR}/tmp"
+chmod -R 775 "${INSTALL_DIR}/uploads" "${INSTALL_DIR}/tmp"
 chown -R "${SCRIPT_USER}:${SCRIPT_USER}" "${INSTALL_DIR}"
-log_ok "Berechtigungen gesetzt"
+log_ok "Berechtigungen gesetzt (${SCRIPT_USER} ist Eigentümer)"
 
 log_step "Schritt 7/7: PM2 Services starten"
 
 # Bestehende PM2-Prozesse entfernen falls vorhanden
 pm2 delete opa-cms 2>/dev/null || true
+pm2 delete opa-license 2>/dev/null || true
 
 pm2 start "${INSTALL_DIR}/server.js" \
     --name "opa-cms" \
     --env production \
     -- --port "${CMS_PORT}"
+
+if [[ "${INSTALL_LICENSE,,}" == "j" || "${INSTALL_LICENSE,,}" == "y" ]] && [ -d "${INSTALL_DIR}/license-server" ]; then
+    pm2 start "${INSTALL_DIR}/license-server/server.js" \
+        --name "opa-license" \
+        --interpreter node
+    log_ok "Lizenzserver gestartet (Port 4000)"
+fi
 
 pm2 save
 PM2_STARTUP=$(pm2 startup systemd -u "${SCRIPT_USER}" --hp "/home/${SCRIPT_USER}" 2>&1 | grep 'sudo' | tail -1)
@@ -138,10 +179,27 @@ EOF
     nginx -t && systemctl reload nginx
     log_ok "Nginx konfiguriert für: ${SERVER_DOMAIN}"
 
-    # Firewall
     if command -v ufw &>/dev/null; then
         ufw allow 'Nginx Full' --force >>/dev/null 2>&1 || true
         log_ok "Firewall: Port 80/443 freigegeben"
+    fi
+
+    # --- HTTPS via Certbot (optional) ---
+    read -rp "  SSL/HTTPS via Let's Encrypt einrichten? (Domain muss auf diesen Server zeigen) [J/n]: " INSTALL_SSL
+    INSTALL_SSL=${INSTALL_SSL:-n}
+    if [[ "${INSTALL_SSL,,}" == "j" || "${INSTALL_SSL,,}" == "y" ]]; then
+        read -rp "  E-Mail für Let's Encrypt Benachrichtigungen: " LE_EMAIL
+        if [ -n "${LE_EMAIL}" ]; then
+            apt-get install -yq certbot python3-certbot-nginx
+            certbot --nginx -d "${SERVER_DOMAIN}" --non-interactive --agree-tos -m "${LE_EMAIL}" || \
+                log_warn "Certbot fehlgeschlagen – bitte manuell ausführen: certbot --nginx -d ${SERVER_DOMAIN}"
+            # CORS auf https umstellen
+            sed -i "s|^CORS_ORIGINS=http://|CORS_ORIGINS=https://|" "${INSTALL_DIR}/.env"
+            su -s /bin/bash "${SCRIPT_USER}" -c "${PM2_BIN} restart opa-cms"
+            log_ok "HTTPS aktiviert, CORS_ORIGINS automatisch auf https umgestellt"
+        else
+            log_warn "Keine E-Mail angegeben – SSL übersprungen."
+        fi
     fi
 fi
 
@@ -165,11 +223,12 @@ echo "  │    pm2 restart opa-cms - CMS neustarten              │"
 echo "  │    pm2 monit           - Live Monitoring             │"
 echo "  └─────────────────────────────────────────────────────┘"
 echo
-if [[ "${INSTALL_NGINX,,}" == "j" || "${INSTALL_NGINX,,}" == "y" ]]; then
-    echo -e "  ${YELLOW}TIPP SSL/HTTPS:${NC}"
-    echo "    apt install certbot python3-certbot-nginx -y"
-    echo "    certbot --nginx -d ${SERVER_DOMAIN}"
+echo -e "  ${GREEN}✅ Setup-Wizard öffnen:${NC}  http://${SERVER_DOMAIN}/admin"
+echo -e "  ${GREEN}   Dort Admin-Zugangsdaten, SMTP & Lizenz einrichten –${NC}"
+echo -e "  ${GREEN}   alles im Browser, kein Konsolenzugriff mehr nötig.${NC}"
+echo
+if [[ "${SCRIPT_USER}" == "opa" ]]; then
+    echo -e "  ${YELLOW}ℹ️  Service läuft als System-User 'opa'.${NC}"
+    echo -e "  ${YELLOW}   PM2-Logs: sudo -u opa pm2 logs opa-cms${NC}"
     echo
 fi
-log_ok "Setup-Wizard unter: http://${SERVER_DOMAIN}/setup"
-echo

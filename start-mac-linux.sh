@@ -1,23 +1,41 @@
 #!/bin/bash
 echo "=============================================================="
-echo " OPA! Santorini - Restaurant CMS"
-echo " Automatisches Setup-Skript (Mac/Linux)"
+echo " OPA-CMS - Restaurant Management System"
+echo " Lokaler Start (Mac / Linux)"
 echo "=============================================================="
 echo ""
 
-echo "[1/3] Installiere grundlegende Abhaengigkeiten (Node.js Modules)..."
+# --- .env automatisch anlegen wenn nicht vorhanden ---
+if [ ! -f ".env" ]; then
+    echo "[SETUP] Keine .env gefunden – wird automatisch aus .env.example erstellt..."
+    cp .env.example .env
+    # Für lokale Entwicklung einen zufälligen Secret generieren
+    if command -v openssl &>/dev/null; then
+        SECRET=$(openssl rand -hex 32)
+        sed -i.bak "s|^ADMIN_SECRET=.*|ADMIN_SECRET=${SECRET}|" .env && rm -f .env.bak
+    fi
+    echo "[OK] .env erstellt."
+else
+    echo "[OK] .env gefunden."
+fi
+
+echo "[1/2] Installiere Abhängigkeiten (Node.js Modules)..."
 npm install --silent
 if [ $? -ne 0 ]; then
-    echo "Fehler bei npm install. Bitte Node.js prfen!"
+    echo "Fehler bei npm install. Bitte Node.js >= 18 prüfen!"
     exit 1
 fi
 
-echo "[2/2] Installation erfolgreich! Starte nun alle Server..."
+echo "[2/2] Starte Server..."
 echo ""
 echo "=============================================================="
-echo " Das CMS ist gleich lokal auf folgendem Port erreichbar:"
-echo " - Frontend/Admin: http://localhost:5000/"
-echo " Lade den Setup-Wizard im Browser, sobald der Server laeuft."
+echo " CMS erreichbar unter:"
+echo " → Admin-Panel:  http://localhost:5000/admin"
+echo " → Gäste-Seite:  http://localhost:5000/"
+echo ""
+echo " Beim ersten Aufruf startet der Setup-Wizard automatisch."
+echo " Dort Admin-Zugangsdaten, SMTP & Lizenz einrichten –"
+echo " alles im Browser, keine weiteren Konsolenbefehle nötig."
 echo "=============================================================="
 echo ""
 

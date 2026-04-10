@@ -1,14 +1,16 @@
 {
-  "name": "grieche-cms-bundle",
-  "version": "1.0.0",
-  "description": "Unified Restaurant CMS and Website Bundle",
+  "name": "opa-cms",
+  "version": "3.0.0",
+  "description": "OPA-CMS – Modulares Restaurant Management System (Speisekarte, Reservierungen, Website-Editor)",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "install-all": "npm install",
-    "update": "git pull && npm run install-all",
-    "export": "powershell -ExecutionPolicy Bypass -File export.ps1"
+    "reset-admin": "node reset-admin.js",
+    "update": "git pull && npm install --silent"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

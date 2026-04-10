@@ -1,24 +1,51 @@
 #!/bin/bash
 echo "=============================================================="
-echo " OPA! Santorini - Restaurant CMS"
-echo " Automatisches Update-Skript (Mac/Linux)"
+echo " OPA-CMS - Automatisches Update-Skript (Mac / Linux)"
 echo "=============================================================="
 echo ""
 
-echo "Ziehe aktuelle Aenderungen von GitHub..."
+# --- Änderungen von GitHub holen ---
+echo "[1/3] Ziehe aktuelle Änderungen von GitHub..."
 git pull
 if [ $? -ne 0 ]; then
-    echo "Fehler beim Aktualisieren von GitHub. (Bist du im richtigen Branch oder hast du lokale Aenderungen?)"
+    echo ""
+    echo "[FEHLER] git pull fehlgeschlagen."
+    echo "  Mögliche Ursachen:"
+    echo "    - Lokale Änderungen vorhanden (git stash oder git reset --hard HEAD)"
+    echo "    - Falscher Branch (git branch zeigt aktuellen Branch)"
+    echo "    - Keine Internetverbindung"
     exit 1
 fi
 
+# --- Dependencies aktualisieren ---
 echo ""
-echo "Installiere moeglicherweise neue Abhaengigkeiten..."
-npm run install-all
+echo "[2/3] Installiere/aktualisiere Abhängigkeiten..."
+npm install --silent
+if [ $? -ne 0 ]; then
+    echo "[FEHLER] npm install fehlgeschlagen."
+    exit 1
+fi
+
+# --- Server neu starten (PM2 oder systemd automatisch erkennen) ---
+echo ""
+echo "[3/3] Server neu starten..."
+
+if command -v pm2 &>/dev/null && pm2 list 2>/dev/null | grep -q 'opa-cms'; then
+    pm2 restart opa-cms
+    echo "[OK] PM2: opa-cms neu gestartet."
+elif systemctl is-active --quiet opa-santorini 2>/dev/null; then
+    sudo systemctl restart opa-santorini
+    echo "[OK] systemd: opa-santorini neu gestartet."
+elif command -v pm2 &>/dev/null; then
+    echo "[INFO] PM2 verfügbar, aber kein 'opa-cms' Prozess gefunden."
+    echo "       Starte mit: pm2 start server.js --name opa-cms"
+else
+    echo "[INFO] Kein laufender Server erkannt."
+    echo "       Starte manuell mit: npm start"
+    echo "       Oder lokal mit:     ./start-mac-linux.sh"
+fi
 
 echo ""
 echo "=============================================================="
-echo " Update erfolgreich abgeschlossen!"
-echo " Das CMS ist auf dem neuesten Stand."
-echo " Führe ./start-mac-linux.sh aus um das CMS neu zu starten."
+echo " Update abgeschlossen! OPA-CMS läuft auf dem neuesten Stand."
 echo "=============================================================="

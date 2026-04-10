@@ -1,55 +1,72 @@
+/**
+ * OPA-CMS Admin Recovery Script
+ * Nutzung: node reset-admin.js
+ *
+ * Setzt das Passwort des ersten Admin-Accounts auf ein zufälliges Passwort zurück.
+ * Das neue Passwort wird in der Konsole angezeigt.
+ * Beim nächsten Login wird eine Passwortänderung erzwungen.
+ */
+
 const DB = require('./server/database.js');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 
 async function resetPassword() {
-    console.log('\n--- GRIECHE-CMS ADMIN RECOVERY ---\n');
+    console.log('\n╔══════════════════════════════════════════════╗');
+    console.log('║       OPA-CMS - Admin Wiederherstellung      ║');
+    console.log('╚══════════════════════════════════════════════╝\n');
 
-    const defaultUser = 'admin';
-    const defaultPass = 'admin';
-
-    // Establish DB connection using the existing database module
     try {
         const users = DB.getUsers();
-        const adminUser = users.find(u => u.user === defaultUser);
-        
-        const hashed = await bcrypt.hash(defaultPass, 10);
-        
-        if (adminUser) {
-            console.log(`[INFO] Administrator account "${defaultUser}" found.`);
-            console.log(`[PROCESS] Resetting password...`);
-            DB.setUserPass(defaultUser, hashed);
-            
-            console.log('\n✅ SUCCESS: Admin password has been reset!');
-            console.log('--------------------------------------------------');
-            console.log('Username: admin');
-            console.log('Password: admin');
-            console.log('--------------------------------------------------');
-            console.log('⚠️ PLEASE CHANGE YOUR PASSWORD IMMEDIATELY AFTER LOGGING IN.');
-        } else {
-            console.log(`[INFO] Administrator account "${defaultUser}" NOT found.`);
-            console.log(`[PROCESS] Creating new default admin account...`);
+        const admins = users.filter(u => u.role === 'admin');
+
+        if (admins.length === 0) {
+            console.log('[INFO] Kein Admin-Account gefunden.');
+            console.log('[INFO] Erstelle Notfall-Admin-Account...');
+
+            const plainPass = crypto.randomBytes(4).toString('hex'); // z.B. "a3f9b2c1"
+            const hashed = await bcrypt.hash(plainPass, 10);
+
             DB.addUser({
-                user: defaultUser,
+                user: 'admin',
                 pass: hashed,
-                name: 'System',
-                last_name: 'Administrator',
-                email: 'admin@localhost',
+                name: 'Notfall',
+                last_name: 'Admin',
+                email: '',
                 role: 'admin',
-                require_password_change: 1
+                require_password_change: 1,
+                recovery_codes: []
             });
-            console.log('\n✅ SUCCESS: Emergency admin account created!');
-            console.log('--------------------------------------------------');
-            console.log('Username: admin');
-            console.log('Password: admin');
-            console.log('--------------------------------------------------');
-            console.log('⚠️ YOU WILL BE PROMPTED TO CHANGE THIS PASSWORD UPON LOGIN.');
+
+            console.log('\n✅ Notfall-Admin erstellt!');
+            console.log('─'.repeat(46));
+            console.log(`  Benutzername: admin`);
+            console.log(`  Passwort:     ${plainPass}`);
+            console.log('─'.repeat(46));
+        } else {
+            // Ersten Admin zurücksetzen
+            const target = admins[0];
+            const plainPass = crypto.randomBytes(4).toString('hex');
+            const hashed = await bcrypt.hash(plainPass, 10);
+
+            DB.setUserPass(target.user, hashed, true);
+
+            console.log(`✅ Passwort für "${target.user}" zurückgesetzt!`);
+            console.log('─'.repeat(46));
+            console.log(`  Benutzername: ${target.user}`);
+            console.log(`  Passwort:     ${plainPass}`);
+            console.log('─'.repeat(46));
         }
+
+        console.log('\n⚠️  Bitte nach dem Login sofort ein neues Passwort setzen.');
+        console.log('   Das Passwort wird beim nächsten Login automatisch abgefragt.\n');
+
     } catch (e) {
-        console.error('\n❌ ERROR CRITICAL: Could not interact with the database.');
-        console.error(e);
+        console.error('\n❌ FEHLER: Datenbankzugriff fehlgeschlagen.');
+        console.error(e.message);
+        process.exit(1);
     }
-    
-    console.log('');
+
     process.exit(0);
 }
 
