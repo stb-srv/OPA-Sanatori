@@ -33,7 +33,19 @@ const allowedOrigins = rawOrigins
 app.use(cors({
     origin: (origin, callback) => {
         if (!origin) return callback(null, true);
-        if (allowedOrigins.includes(origin)) return callback(null, true);
+        
+        // Dynamisch die erlaubten Origins aus der aktuellen CONFIG laden
+        const currentRaw = CONFIG.CORS_ORIGINS || process.env.CORS_ORIGINS || '';
+        const currentAllowed = currentRaw
+            ? currentRaw.split(',').map(o => o.trim()).filter(Boolean)
+            : ['http://localhost:3000', 'http://localhost:5000'];
+
+        if (currentAllowed.includes(origin)) return callback(null, true);
+        
+        // Während des Setups erlauben wir die aktuelle Domain defensiv, 
+        // falls noch nichts konfiguriert ist.
+        if (!CONFIG.SETUP_COMPLETE) return callback(null, true);
+
         return callback(new Error(`CORS: Origin '${origin}' nicht erlaubt.`));
     },
     credentials: true
