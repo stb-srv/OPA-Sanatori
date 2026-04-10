@@ -34,6 +34,15 @@ async function init() {
         if (res.success) {
             // Remove credentials from URL for security
             window.history.replaceState({}, document.title, window.location.pathname);
+            // Re-run init() now that we are authenticated
+            return init();
+        } else {
+            // Show login form with error so user can retry manually
+            loginContainer.style.display = 'flex';
+            adminDashboard.style.display = 'none';
+            document.getElementById('password-change-container').style.display = 'none';
+            showToast(res.reason || 'Anmeldung fehlgeschlagen. Bitte Zugangsdaten prüfen.', 'error');
+            return;
         }
     }
 
@@ -153,11 +162,18 @@ async function switchView(view, tab = null) {
 if (loginForm) {
     loginForm.onsubmit = async (e) => {
         e.preventDefault();
+        const btn = loginForm.querySelector('button[type="submit"]');
+        const origText = btn ? btn.innerHTML : null;
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Anmelden...'; }
+
         const res = await login(loginForm.username.value, loginForm.password.value);
+
+        if (btn) { btn.disabled = false; btn.innerHTML = origText; }
+
         if (res.success) {
             init();
         } else {
-            showToast(res.reason, 'error');
+            showToast(res.reason || 'Benutzername oder Passwort falsch.', 'error');
         }
     };
 
