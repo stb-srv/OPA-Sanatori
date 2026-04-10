@@ -113,8 +113,7 @@
         <div class="progress-step active" id="ps1"><div class="step-dot">1</div><span class="step-label">Lizenz</span></div>
         <div class="progress-step" id="ps2"><div class="step-dot">2</div><span class="step-label">Restaurant</span></div>
         <div class="progress-step" id="ps3"><div class="step-dot">3</div><span class="step-label">Datenbank</span></div>
-        <div class="progress-step" id="ps4"><div class="step-dot">4</div><span class="step-label">E-Mail</span></div>
-        <div class="progress-step" id="ps5"><div class="step-dot">5</div><span class="step-label">Admin</span></div>
+        <div class="progress-step" id="ps4"><div class="step-dot">4</div><span class="step-label">Abschluss</span></div>
     </div>
     <div class="card">
         <!-- Step 1: Lizenz -->
@@ -210,47 +209,25 @@
             <div class="form-group"><label>Absendername</label><input type="text" id="smtpFrom" placeholder="Santorini Taverna"><div class="hint">Wird als Absender in E-Mails angezeigt</div></div>
             <div class="btn-row">
                 <button class="btn btn-ghost" onclick="goStep(3)"><i class="fas fa-arrow-left"></i> Zurück</button>
-                <button class="btn btn-primary" onclick="goStep(5)">Weiter <i class="fas fa-arrow-right"></i></button>
+                <button class="btn btn-primary" id="btn-finish" onclick="finishSetup()">Setup abschließen <i class="fas fa-check"></i></button>
             </div>
         </div>
-        <!-- Step 5: Admin -->
-        <div class="step" id="step5">
-            <div class="card-title">👤 Admin-Account</div>
-            <div class="card-subtitle">Erstelle den ersten Administrator-Zugang für das CMS.</div>
-            <div class="form-row">
-                <div class="form-group"><label>Benutzername</label><input type="text" id="adminUser" placeholder="admin" autocomplete="off"></div>
-                <div class="form-group"><label>E-Mail Adresse</label><input type="email" id="adminEmail" placeholder="admin@restaurant.de" autocomplete="off"></div>
-            </div>
-            <div class="form-row">
-                <div class="form-group"><label>Passwort</label>
-                    <div class="input-wrap">
-                        <input type="password" id="adminPass" placeholder="Sicheres Passwort" oninput="checkPwStrength(this.value)">
-                        <button class="toggle-pw" type="button" onclick="togglePw('adminPass',this)"><i class="fas fa-eye"></i></button>
-                    </div>
-                    <div class="pw-strength" id="pw-strength"></div>
-                    <div class="hint" id="pw-hint">Mind. 8 Zeichen, Groß-/Kleinbuchstaben, Zahlen</div>
-                </div>
-            </div>
-            <div class="form-group"><label>Passwort bestätigen</label><input type="password" id="adminPassConfirm" placeholder="Passwort wiederholen"></div>
-            </div>
-            <div class="info-box green" style="margin-top:4px"><i class="fas fa-shield-halved"></i> Weitere Admin-Accounts können später im CMS unter <strong>Benutzer</strong> angelegt werden.</div>
-            <div class="btn-row">
-                <button class="btn btn-ghost" onclick="goStep(4)"><i class="fas fa-arrow-left"></i> Zurück</button>
-                <button class="btn btn-primary" id="btn-finish" onclick="finishSetup()"><i class="fas fa-check"></i> Setup abschließen</button>
-            </div>
-        </div>
+
         <!-- Success -->
         <div class="success-screen" id="success-screen">
             <div class="success-icon"><i class="fas fa-check"></i></div>
-            <h2>Bereit!</h2>
-            <p>Das CMS wurde erfolgreich eingerichtet.<br>Du wirst jetzt zum Dashboard weitergeleitet.</p>
+            <p>Das CMS wurde erfolgreich eingerichtet.<br>Du kannst dich jetzt mit folgenden Daten anmelden:</p>
+            <div style="background:rgba(255,255,255,0.05); padding:15px; border-radius:12px; margin:20px 0; font-family:monospace;">
+                Benutzer: <strong>admin</strong><br>
+                Passwort: <strong>admin</strong>
+            </div>
             <button class="btn btn-primary" style="max-width:220px;margin:0 auto" onclick="location.href='/admin'"><i class="fas fa-arrow-right"></i> Zum Dashboard</button>
         </div>
     </div>
 </div>
 <script>
 let currentStep = 1;
-const TOTAL = 5;
+const TOTAL = 4;
 let licenseData = null;
 
 // Trailing Slash immer entfernen
@@ -330,13 +307,6 @@ function onDbTypeChange() {
 }
 
 async function finishSetup() {
-    const user  = document.getElementById('adminUser').value.trim();
-    const pass  = document.getElementById('adminPass').value;
-    const pass2 = document.getElementById('adminPassConfirm').value;
-    if (!user || !pass) return alert('Benutzername und Passwort sind erforderlich.');
-    if (pass !== pass2) return alert('Passwörter stimmen nicht überein.');
-    if (pass.length < 8) return alert('Passwort muss mindestens 8 Zeichen haben.');
-
     const btn = document.getElementById('btn-finish');
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-circle-notch spin"></i> Wird gespeichert...';
@@ -371,9 +341,9 @@ async function finishSetup() {
             lang:    document.getElementById('restLang').value,
             timezone: document.getElementById('restTz').value
         },
-        adminUser: document.getElementById('adminUser').value.trim(),
-        adminEmail: document.getElementById('adminEmail').value.trim(),
-        adminPass: document.getElementById('adminPass').value
+        adminUser: 'admin',
+        adminEmail: '',
+        adminPass: 'admin'
     };
 
     try {
