@@ -57,6 +57,10 @@ const loginLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, max: 10,
     message: { success: false, reason: 'Zu viele Login-Versuche. Bitte 15 Minuten warten.' }
 });
+const forgotPasswordLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, max: 5,
+    message: { success: false, reason: 'Zu viele Anfragen. Bitte 1 Stunde warten.' }
+});
 const reservationLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, max: 20,
     message: { success: false, reason: 'Zu viele Anfragen. Bitte später erneut versuchen.' }
@@ -274,16 +278,36 @@ app.get('/api/version', (req, res) => {
 app.post('/api/admin/login', loginLimiter, async (req, res) => {
     const { user, pass } = req.body;
     const u = (DB.getUsers() || []).find(x => x.user === user);
-    if (!u) return res.status(401).json({ success: false });
+    // Einheitliche Fehlermeldung – kein User-Enumeration möglich
+    if (!u) return res.status(401).json({ success: false, reason: 'Benutzername oder Passwort falsch.' });
     let isValid = false;
     try { isValid = await bcrypt.compare(pass, u.pass); } catch(e) { isValid = false; }
-    // Kein Plaintext-Fallback mehr – nur bcrypt-Vergleich erlaubt
     if (isValid) {
         const requirePasswordChange = !!u.require_password_change;
         const token = jwt.sign({ user: u.user, role: u.role, requirePasswordChange }, ADMIN_SECRET, { expiresIn: '12h' });
         res.json({ success: true, token, user: { ...u, pass: undefined }, requirePasswordChange });
     } else {
-        res.status(401).json({ success: false });
+        res.status(401).json({ success: false, reason: 'Benutzername oder Passwort falsch.' });
+    }
+});
+
+// --- Passwort vergessen ---
+app.post('/api/admin/forgot-password', forgotPasswordLimiter, async (req, res) => {
+    const { user } = req.body;
+    // Immer success zurückgeben – verhindert User-Enumeration
+    const u = (DB.getUsers() || []).find(x => x.user === user);
+    if (!u || !u.email) {
+        return res.json({ success: true, message: 'Falls ein Konto mit diesem Benutzernamen und einer hinterlegten E-Mail existiert, wird eine E-Mail versendet.' });
+    }
+    try {
+        const plainPass = crypto.randomBytes(5).toString('hex');
+        const hashed = await bcrypt.hash(plainPass, 10);
+        DB.setUserPass(u.user, hashed, true);
+        await Mailer.sendUserCredentials(u.email, u.name || u.user, u.user, plainPass, DB);
+        res.json({ success: true, message: 'Falls ein Konto mit diesem Benutzernamen und einer hinterlegten E-Mail existiert, wird eine E-Mail versendet.' });
+    } catch (e) {
+        console.error('Forgot-password mailer error:', e);
+        res.status(500).json({ success: false, reason: 'E-Mail konnte nicht gesendet werden. Bitte SMTP-Konfiguration prüfen.' });
     }
 });
 
