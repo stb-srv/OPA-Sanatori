@@ -48,10 +48,11 @@ module.exports = (requireAuth, requireLicense, LICENSE_SERVER) => {
             });
             const r = await response.json();
             if (r.status === 'active') {
-                // Lizenzserver gibt das signierte JWT als 'license_token' zurück
-                const licenseToken = r.license_token || null;
+                // Lizenzserver gibt das signierte JWT als 'license_token' ODER 'token' zurück
+                // Beide Felder werden unterstützt für maximale Kompatibilität
+                const licenseToken = r.license_token || r.token || null;
                 if (!licenseToken) {
-                    console.error('❌ License server returned status=active but no license_token! RSA_PRIVATE_KEY on license server probably not set.');
+                    console.error('❌ License server returned status=active but no signed token (r.token missing)!');
                     return res.status(500).json({
                         success: false,
                         reason: 'Lizenzserver hat kein signiertes Token zurückgegeben. Bitte sicherstellen dass RSA_PRIVATE_KEY auf dem Lizenzserver gesetzt ist.'
@@ -60,7 +61,7 @@ module.exports = (requireAuth, requireLicense, LICENSE_SERVER) => {
                 const settings = DB.getKV('settings', {});
                 settings.license = {
                     key:          req.body.key,
-                    licenseToken: licenseToken,   // signiertes RS256-JWT von license_token Feld
+                    licenseToken: licenseToken,
                     status:       'active',
                     customer:     r.customer_name,
                     type:         r.type,
