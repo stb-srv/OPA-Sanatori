@@ -50,7 +50,7 @@ fi
 clear
 echo -e "${BOLD}"
 echo "  ╔══════════════════════════════════════════════════════╗"
-echo "  ║         OPA-CMS - Linux Installer v3.0              ║"
+echo "  ║         OPA-CMS - Linux Installer v3.1              ║"
 echo "  ╚══════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 log_info "Installationsverzeichnis: ${INSTALL_DIR}"
@@ -91,7 +91,7 @@ log_ok "System aktualisiert"
 
 log_step "Schritt 2/7: Basis-Pakete installieren"
 apt-get install -yq curl git build-essential python3 ufw openssl
-log_ok "Basis-Pakete installiert"
+log_ok "Basis-Pakete installiert (inkl. build-essential & python3 für better-sqlite3)"
 
 log_step "Schritt 3/7: Node.js 20 LTS installieren"
 if ! command -v node &>/dev/null; then
@@ -99,7 +99,15 @@ if ! command -v node &>/dev/null; then
     apt-get install -yq nodejs
     log_ok "Node.js $(node -v) installiert"
 else
-    log_warn "Node.js bereits installiert: $(node -v)"
+    NODE_MAJOR=$(node -e "console.log(parseInt(process.versions.node))")
+    if [ "${NODE_MAJOR}" -lt 18 ]; then
+        log_warn "Node.js $(node -v) ist zu alt (min. 18 erforderlich) – aktualisiere auf LTS 20..."
+        curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+        apt-get install -yq nodejs
+        log_ok "Node.js $(node -v) aktualisiert"
+    else
+        log_warn "Node.js bereits installiert: $(node -v)"
+    fi
 fi
 
 log_step "Schritt 4/7: PM2 installieren"
@@ -109,44 +117,49 @@ if ! command -v pm2 &>/dev/null; then
 else
     log_warn "PM2 bereits installiert: $(pm2 -v)"
 fi
+PM2_BIN=$(command -v pm2)
 
 log_step "Schritt 5/7: Projektabhängigkeiten installieren"
 cd "${INSTALL_DIR}"
 
-log_info "Installiere CMS-Abhängigkeiten..."
+log_info "Installiere CMS-Abhängigkeiten (inkl. better-sqlite3 native build)..."
 npm install --silent
+if [ $? -ne 0 ]; then
+    log_error "npm install fehlgeschlagen!"
+    log_error "Stelle sicher dass build-essential und python3 installiert sind."
+    exit 1
+fi
 log_ok "CMS npm-Pakete installiert"
 
 log_step "Schritt 6/7: Verzeichnisse & Berechtigungen"
-mkdir -p "${INSTALL_DIR}/uploads" "${INSTALL_DIR}/tmp" "${INSTALL_DIR}/server"
-chmod -R 775 "${INSTALL_DIR}/uploads" "${INSTALL_DIR}/tmp" "${INSTALL_DIR}/server"
+mkdir -p "${INSTALL_DIR}/uploads" \
+         "${INSTALL_DIR}/tmp" \
+         "${INSTALL_DIR}/server" \
+         "${INSTALL_DIR}/cms/assets/css" \
+         "${INSTALL_DIR}/plugins"
+chmod -R 775 "${INSTALL_DIR}/uploads" \
+              "${INSTALL_DIR}/tmp" \
+              "${INSTALL_DIR}/server" \
+              "${INSTALL_DIR}/cms" \
+              "${INSTALL_DIR}/plugins"
 chown -R "${SCRIPT_USER}:${SCRIPT_USER}" "${INSTALL_DIR}"
-log_ok "Berechtigungen gesetzt (${SCRIPT_USER} ist Eigentümer)"
+log_ok "Berechtigungen gesetzt (${SCRIPT_USER} ist Eigentümer, cms/assets/css/ angelegt)"
 
 log_step "Schritt 7/7: PM2 Services starten"
 
 # Bestehende PM2-Prozesse entfernen falls vorhanden
-pm2 delete opa-cms 2>/dev/null || true
-pm2 delete opa-license 2>/dev/null || true
+"${PM2_BIN}" delete opa-cms 2>/dev/null || true
 
-pm2 start "${INSTALL_DIR}/server.js" \
+"${PM2_BIN}" start "${INSTALL_DIR}/server.js" \
     --name "opa-cms" \
-    --env production \
-    -- --port "${CMS_PORT}"
+    --env production
 
-if [[ "${INSTALL_LICENSE,,}" == "j" || "${INSTALL_LICENSE,,}" == "y" ]] && [ -d "${INSTALL_DIR}/license-server" ]; then
-    pm2 start "${INSTALL_DIR}/license-server/server.js" \
-        --name "opa-license" \
-        --interpreter node
-    log_ok "Lizenzserver gestartet (Port 4000)"
-fi
-
-pm2 save
-PM2_STARTUP=$(pm2 startup systemd -u "${SCRIPT_USER}" --hp "/home/${SCRIPT_USER}" 2>&1 | grep 'sudo' | tail -1)
+"${PM2_BIN}" save
+PM2_STARTUP=$("${PM2_BIN}" startup systemd -u "${SCRIPT_USER}" --hp "/home/${SCRIPT_USER}" 2>&1 | grep 'sudo' | tail -1)
 if [ -n "${PM2_STARTUP}" ]; then
     eval "${PM2_STARTUP}" || true
 fi
-log_ok "PM2 Autostart konfiguriert"
+log_ok "PM2 gestartet & Autostart konfiguriert"
 
 # --- Nginx ---
 if [[ "${INSTALL_NGINX,,}" == "j" || "${INSTALL_NGINX,,}" == "y" ]]; then
@@ -195,7 +208,7 @@ EOF
                 log_warn "Certbot fehlgeschlagen – bitte manuell ausführen: certbot --nginx -d ${SERVER_DOMAIN}"
             # CORS auf https umstellen
             sed -i "s|^CORS_ORIGINS=http://|CORS_ORIGINS=https://|" "${INSTALL_DIR}/.env"
-            su -s /bin/bash "${SCRIPT_USER}" -c "${PM2_BIN} restart opa-cms"
+            "${PM2_BIN}" restart opa-cms
             log_ok "HTTPS aktiviert, CORS_ORIGINS automatisch auf https umgestellt"
         else
             log_warn "Keine E-Mail angegeben – SSL übersprungen."
@@ -213,7 +226,6 @@ echo -e "${NC}"
 echo
 echo "  CMS URL:      http://${SERVER_DOMAIN}"
 echo "  Admin Panel:  http://${SERVER_DOMAIN}/admin"
-
 echo
 echo "  ┌─────────────────────────────────────────────────────┐"
 echo "  │  Nützliche Befehle:                                  │"
@@ -221,6 +233,7 @@ echo "  │    pm2 status          - Prozesse anzeigen           │"
 echo "  │    pm2 logs opa-cms    - CMS Logs                    │"
 echo "  │    pm2 restart opa-cms - CMS neustarten              │"
 echo "  │    pm2 monit           - Live Monitoring             │"
+echo "  │    ./update-upgrade.sh - Update auf neueste Version  │"
 echo "  └─────────────────────────────────────────────────────┘"
 echo
 echo -e "  ${GREEN}✅ Setup-Wizard öffnen:${NC}  http://${SERVER_DOMAIN}/admin"
