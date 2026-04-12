@@ -14,7 +14,8 @@
 const { verifyLicenseToken } = require('./license.js');
 
 const CHECK_INTERVAL_MS  = 24 * 60 * 60 * 1000; // 24h
-const STARTUP_DELAY_MS   =  5 * 60 * 1000;       // 5 Min nach Boot (erst starten lassen)
+const STARTUP_DELAY_MS   = 10 * 1000;            // 10s nach Boot (statt 5min)
+const TOKEN_REFRESH_THRESHOLD_H = 30;            // Token < 30h gültig → sofort erneuern
 const MAX_FAILURES       = 3;
 
 class LicenseChecker {
@@ -29,12 +30,12 @@ class LicenseChecker {
     }
 
     start() {
-        // Erster Check nach 5 Minuten (Server soll erst komplett starten)
+        // Startup-Check nach 10s – prüft ob Token bald abläuft und erneuert es sofort
         this.startupTimer = setTimeout(() => {
-            this._check();
+            this._checkIfTokenNeedsRefresh();
             this.timer = setInterval(() => this._check(), CHECK_INTERVAL_MS);
         }, STARTUP_DELAY_MS);
-        console.log(`\uD83D\uDD12 LicenseChecker gestartet \u2013 erster Check in 5 Minuten, dann alle 24h.`);
+        console.log(`\uD83D\uDD12 LicenseChecker gestartet \u2013 Startup-Check in 10s, dann alle 24h.`);
     }
 
     stop() {
@@ -42,18 +43,54 @@ class LicenseChecker {
         if (this.startupTimer) clearTimeout(this.startupTimer);
     }
 
+    /**
+     * Startup-Prüfung: Wenn das gespeicherte Token in weniger als TOKEN_REFRESH_THRESHOLD_H
+     * Stunden abläuft (oder fehlt), sofort einen /refresh-Call machen.
+     * Verhindert FREE-Fallback nach Server-Neustart wenn Token fast abgelaufen ist.
+     */
+    async _checkIfTokenNeedsRefresh() {
+        try {
+            const settings = await this.DB.getKV('settings', {});
+            const lic      = settings.license || {};
+
+            if (!lic.key || lic.isTrial) return; // kein Check nötig
+
+            const token   = lic.licenseToken || null;
+            const payload = token ? verifyLicenseToken(token, this.host) : null;
+
+            if (!payload) {
+                // Kein gültiges Token – sofort erneuern
+                console.log(`\uD83D\uDD04 [Startup] Kein gültiges Token gefunden – sofortiger Refresh...`);
+                await this._check();
+                return;
+            }
+
+            const nowSec       = Math.floor(Date.now() / 1000);
+            const secondsLeft  = (payload.exp || 0) - nowSec;
+            const hoursLeft    = secondsLeft / 3600;
+
+            if (hoursLeft < TOKEN_REFRESH_THRESHOLD_H) {
+                console.log(`\uD83D\uDD04 [Startup] Token läuft in ${hoursLeft.toFixed(1)}h ab – sofortiger Refresh...`);
+                await this._check();
+            } else {
+                console.log(`\u2705 [Startup] Token noch ${hoursLeft.toFixed(1)}h gültig – kein sofortiger Refresh nötig.`);
+            }
+        } catch (e) {
+            console.warn(`\u26a0\ufe0f  [Startup] Token-Prüfung fehlgeschlagen: ${e.message} – starte normalen Check...`);
+            await this._check();
+        }
+    }
+
     async _check() {
-        const settings = this.DB.getKV('settings', {});
+        const settings = await this.DB.getKV('settings', {});
         const lic      = settings.license || {};
 
         // Trial-Lizenzen oder keine Lizenz: kein Online-Check nötig
         if (!lic.key || lic.isTrial) return;
 
-        console.log(`\uD83D\uDD04 [${new Date().toISOString()}] Lizenz-Online-Check l\u00e4uft...`);
+        console.log(`\uD83D\uDD04 [${new Date().toISOString()}] Lizenz-Online-Check läuft...`);
 
         try {
-            // FIX: /heartbeat umbenannt zu /refresh – der Lizenzserver liefert dort
-            // { status: 'active', token: '<JWT>' } exakt im erwarteten Format zurück.
             const response = await fetch(`${this.licenseServerUrl}/api/v1/refresh`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -80,7 +117,11 @@ class LicenseChecker {
 
                 // Frischen Token in DB speichern
                 settings.license.licenseToken = rawToken;
-                this.DB.setKV('settings', settings);
+                // degraded-Flags zurücksetzen falls vorher gesetzt
+                delete settings.license.degraded;
+                delete settings.license.degradedReason;
+                delete settings.license.degradedAt;
+                await this.DB.setKV('settings', settings);
 
                 this.failCount = 0;
                 this.degraded  = false;
