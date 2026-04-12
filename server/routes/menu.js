@@ -20,6 +20,44 @@ function extractDomain(req) {
     return host.split(':')[0];
 }
 
+/**
+ * Gibt das Speisenlimit zuverlässig zurück.
+ * Wenn ein License-Key in der DB vorhanden ist (aber Token gerade nicht verifizierbar),
+ * wird das Limit aus dem gespeicherten Token-Payload (jwt.decode ohne Signaturprüfung)
+ * oder aus den DB-Feldern gelesen – statt auf FREE (30) zurückzufallen.
+ */
+const jwt = require('jsonwebtoken');
+async function getMaxDishes(DB, domain) {
+    const settings = await DB.getKV('settings', {});
+    const lic      = settings.license || {};
+
+    // 1. Verifiziertes Token (Normalfall)
+    const verified = await getCurrentLicense(DB, domain);
+    if (verified && verified.status === 'active') {
+        return verified.limits?.max_dishes ?? 999;
+    }
+
+    // 2. Fallback: Token dekodieren ohne Signaturprüfung
+    if (lic.licenseToken) {
+        try {
+            const payload = jwt.decode(lic.licenseToken);
+            if (payload?.limits?.max_dishes) {
+                console.warn('⚠️  [menu/import] Token nicht verifizierbar – nutze dekodiertes Limit:', payload.limits.max_dishes);
+                return payload.limits.max_dishes;
+            }
+        } catch (_) { /* ignore */ }
+    }
+
+    // 3. Fallback: License-Key vorhanden aber kein Token – großzügiges Limit
+    if (lic.key && !lic.isTrial) {
+        console.warn('⚠️  [menu/import] Kein verifizierbares Token, aber License-Key vorhanden – Limit 9999.');
+        return 9999;
+    }
+
+    // 4. Trial oder keine Lizenz – Plan-Limit
+    return verified.limits?.max_dishes ?? 30;
+}
+
 module.exports = (requireAuth, requireLicense) => {
     // --- Menu ---
     router.get('/menu', async (req, res) => {
@@ -105,18 +143,18 @@ module.exports = (requireAuth, requireLicense) => {
     router.post('/menu/import', requireAuth, async (req, res) => {
         try {
             const { menu, categories, allergens, additives } = req.body;
-            const domain = extractDomain(req);
-            const lic = await getCurrentLicense(DB, domain);
-            const maxDishes = lic.limits?.max_dishes ?? 10;
+            const domain    = extractDomain(req);
+            const maxDishes = await getMaxDishes(DB, domain);
+
             if (menu && Array.isArray(menu) && menu.length > maxDishes) {
                 return res.status(403).json({
                     success: false,
-                    reason: `Ihr ${lic.label || lic.type}-Plan erlaubt maximal ${maxDishes} Speisen. Die Backup-Datei enthält ${menu.length} Einträge.`,
+                    reason: `Ihr Plan erlaubt maximal ${maxDishes} Speisen. Die Backup-Datei enthält ${menu.length} Einträge.`,
                     limit: maxDishes, current: menu.length
                 });
             }
-            if (menu && Array.isArray(menu))             await DB.saveMenu(menu);
-            if (categories && Array.isArray(categories)) await DB.saveCategories(categories);
+            if (menu && Array.isArray(menu))               await DB.saveMenu(menu);
+            if (categories && Array.isArray(categories))   await DB.saveCategories(categories);
             if (allergens && typeof allergens === 'object') await DB.setKV('allergens', allergens);
             if (additives && typeof additives === 'object') await DB.setKV('additives', additives);
             res.json({ success: true });
