@@ -1,36 +1,39 @@
 /**
  * Routes – Orders
- * GET    /api/orders
- * POST   /api/orders
- * PUT    /api/orders/:id
- * DELETE /api/orders/:id
  */
 const router = require('express').Router();
 const DB = require('../database.js');
 const { reservationLimiter } = require('../middleware.js');
 
 module.exports = (requireAuth, io) => {
-    router.get('/', requireAuth, (req, res) => res.json(DB.getOrders()));
-
-    router.post('/', reservationLimiter, (req, res) => {
-        const newOrder = { ...req.body, id: Date.now().toString(), timestamp: new Date().toISOString(), status: 'pending' };
-        DB.addOrder(newOrder);
-        io.emit('new-order', newOrder);
-        res.json({ success: true, order: newOrder });
+    router.get('/', requireAuth, async (req, res) => {
+        try { res.json(await DB.getOrders()); }
+        catch(e) { res.status(500).json({ success: false, reason: e.message }); }
     });
 
-    router.put('/:id', requireAuth, (req, res) => {
-        const { status } = req.body;
-        if (!status) return res.status(400).json({ success: false, reason: 'Status fehlt.' });
-        DB.updateOrderStatus(req.params.id, status);
-        const updated = DB.getOrderById(req.params.id);
-        io.emit('order-updated', updated);
-        res.json({ success: true, order: updated });
+    router.post('/', reservationLimiter, async (req, res) => {
+        try {
+            const newOrder = { ...req.body, id: Date.now().toString(), timestamp: new Date().toISOString(), status: 'pending' };
+            await DB.addOrder(newOrder);
+            io.emit('new-order', newOrder);
+            res.json({ success: true, order: newOrder });
+        } catch(e) { res.status(500).json({ success: false, reason: e.message }); }
     });
 
-    router.delete('/:id', requireAuth, (req, res) => {
-        DB.deleteOrder(req.params.id);
-        res.json({ success: true });
+    router.put('/:id', requireAuth, async (req, res) => {
+        try {
+            const { status } = req.body;
+            if (!status) return res.status(400).json({ success: false, reason: 'Status fehlt.' });
+            await DB.updateOrderStatus(req.params.id, status);
+            const updated = await DB.getOrderById(req.params.id);
+            io.emit('order-updated', updated);
+            res.json({ success: true, order: updated });
+        } catch(e) { res.status(500).json({ success: false, reason: e.message }); }
+    });
+
+    router.delete('/:id', requireAuth, async (req, res) => {
+        try { await DB.deleteOrder(req.params.id); res.json({ success: true }); }
+        catch(e) { res.status(500).json({ success: false, reason: e.message }); }
     });
 
     return router;

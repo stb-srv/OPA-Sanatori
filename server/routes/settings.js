@@ -7,25 +7,42 @@ const Mailer = require('../mailer.js');
 const { getCurrentLicense, PLAN_DEFINITIONS } = require('../license.js');
 
 module.exports = (requireAuth, requireLicense, LICENSE_SERVER) => {
-    router.get('/homepage', (req, res) => {
-        const settings = DB.getKV('settings', {});
-        res.json({ ...DB.getKV('homepage', {}), activeModules: settings.activeModules });
+    router.get('/homepage', async (req, res) => {
+        try {
+            const settings = await DB.getKV('settings', {});
+            const homepage = await DB.getKV('homepage', {});
+            res.json({ ...homepage, activeModules: settings.activeModules });
+        } catch(e) { res.status(500).json({ success: false, reason: e.message }); }
     });
-    router.post('/homepage', requireAuth, requireLicense('custom_design'), (req, res) => {
-        DB.setKV('homepage', req.body); res.json({ success: true });
+    router.post('/homepage', requireAuth, requireLicense('custom_design'), async (req, res) => {
+        try { await DB.setKV('homepage', req.body); res.json({ success: true }); }
+        catch(e) { res.status(500).json({ success: false, reason: e.message }); }
     });
 
-    router.get('/branding', (req, res) => res.json(DB.getKV('branding', {})));
-    router.post('/branding', requireAuth, (req, res) => { DB.setKV('branding', req.body); res.json({ success: true }); });
+    router.get('/branding', async (req, res) => {
+        try { res.json(await DB.getKV('branding', {})); }
+        catch(e) { res.status(500).json({ success: false, reason: e.message }); }
+    });
+    router.post('/branding', requireAuth, async (req, res) => {
+        try { await DB.setKV('branding', req.body); res.json({ success: true }); }
+        catch(e) { res.status(500).json({ success: false, reason: e.message }); }
+    });
 
-    router.get('/settings', requireAuth, (req, res) => res.json(DB.getKV('settings', {})));
-    router.post('/settings', requireAuth, (req, res) => { DB.setKV('settings', req.body); res.json({ success: true }); });
+    router.get('/settings', requireAuth, async (req, res) => {
+        try { res.json(await DB.getKV('settings', {})); }
+        catch(e) { res.status(500).json({ success: false, reason: e.message }); }
+    });
+    router.post('/settings', requireAuth, async (req, res) => {
+        try { await DB.setKV('settings', req.body); res.json({ success: true }); }
+        catch(e) { res.status(500).json({ success: false, reason: e.message }); }
+    });
 
     router.post('/settings/test-smtp', requireAuth, async (req, res) => {
-        const target = DB.getUsers().find(u => u.user === req.admin.user);
-        const toEmail = target?.email || req.body?.email;
-        if (!toEmail) return res.status(400).json({ success: false, reason: 'Keine Ziel-E-Mail-Adresse gefunden. Bitte in den Benutzereinstellungen hinterlegen.' });
         try {
+            const users  = await DB.getUsers();
+            const target = (users || []).find(u => u.user === req.admin.user);
+            const toEmail = target?.email || req.body?.email;
+            if (!toEmail) return res.status(400).json({ success: false, reason: 'Keine Ziel-E-Mail-Adresse gefunden. Bitte in den Benutzereinstellungen hinterlegen.' });
             await Mailer.sendTestMail(toEmail, DB);
             res.json({ success: true, sentTo: toEmail });
         } catch (e) {
@@ -33,10 +50,13 @@ module.exports = (requireAuth, requireLicense, LICENSE_SERVER) => {
         }
     });
 
-    router.get('/license/info', requireAuth, (req, res) => {
-        const host = req.headers.host || 'localhost';
-        const lic = getCurrentLicense(DB, host);
-        res.json({ ...lic, menu_items_used: (DB.getMenu() || []).length, trialDaysLeft: lic.trialDaysLeft, plans: PLAN_DEFINITIONS });
+    router.get('/license/info', requireAuth, async (req, res) => {
+        try {
+            const host = req.headers.host || 'localhost';
+            const lic  = await getCurrentLicense(DB, host);
+            const menu = await DB.getMenu();
+            res.json({ ...lic, menu_items_used: (menu || []).length, trialDaysLeft: lic.trialDaysLeft, plans: PLAN_DEFINITIONS });
+        } catch(e) { res.status(500).json({ success: false, reason: e.message }); }
     });
 
     router.post('/license/validate', async (req, res) => {
@@ -48,17 +68,15 @@ module.exports = (requireAuth, requireLicense, LICENSE_SERVER) => {
             });
             const r = await response.json();
             if (r.status === 'active') {
-                // Lizenzserver gibt das signierte JWT als 'license_token' ODER 'token' zurück
-                // Beide Felder werden unterstützt für maximale Kompatibilität
                 const licenseToken = r.license_token || r.token || null;
                 if (!licenseToken) {
-                    console.error('❌ License server returned status=active but no signed token (r.token missing)!');
+                    console.error('❌ License server returned status=active but no signed token!');
                     return res.status(500).json({
                         success: false,
                         reason: 'Lizenzserver hat kein signiertes Token zurückgegeben. Bitte sicherstellen dass RSA_PRIVATE_KEY auf dem Lizenzserver gesetzt ist.'
                     });
                 }
-                const settings = DB.getKV('settings', {});
+                const settings = await DB.getKV('settings', {});
                 settings.license = {
                     key:          req.body.key,
                     licenseToken: licenseToken,
@@ -73,21 +91,23 @@ module.exports = (requireAuth, requireLicense, LICENSE_SERVER) => {
                         max_tables: r.limits?.max_tables ?? r.limits?.maxTables ?? 5
                     }
                 };
-                DB.setKV('settings', settings);
+                await DB.setKV('settings', settings);
                 return res.json({ success: true, license: settings.license });
             }
             res.status(403).json({ success: false, reason: r.message });
         } catch (e) { res.status(500).json({ success: false, reason: 'Lizenzserver nicht erreichbar.' }); }
     });
 
-    router.post('/license/modules', requireAuth, (req, res) => {
-        const { modules } = req.body;
-        if (!modules || typeof modules !== 'object') return res.status(400).json({ success: false, reason: 'Ungültige Module-Daten.' });
-        const settings = DB.getKV('settings', {});
-        if (!settings.license) return res.status(400).json({ success: false, reason: 'Keine Lizenz aktiv.' });
-        settings.license.modules = { ...settings.license.modules, ...modules };
-        DB.setKV('settings', settings);
-        res.json({ success: true, modules: settings.license.modules });
+    router.post('/license/modules', requireAuth, async (req, res) => {
+        try {
+            const { modules } = req.body;
+            if (!modules || typeof modules !== 'object') return res.status(400).json({ success: false, reason: 'Ungültige Module-Daten.' });
+            const settings = await DB.getKV('settings', {});
+            if (!settings.license) return res.status(400).json({ success: false, reason: 'Keine Lizenz aktiv.' });
+            settings.license.modules = { ...settings.license.modules, ...modules };
+            await DB.setKV('settings', settings);
+            res.json({ success: true, modules: settings.license.modules });
+        } catch(e) { res.status(500).json({ success: false, reason: e.message }); }
     });
 
     return router;
