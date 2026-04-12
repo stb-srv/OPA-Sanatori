@@ -6,6 +6,28 @@ const DB = require('../database.js');
 const Mailer = require('../mailer.js');
 const { getCurrentLicense, PLAN_DEFINITIONS } = require('../license.js');
 
+/**
+ * Extrahiert die saubere Domain aus dem Request.
+ * Wertet X-Forwarded-Host, Origin und Host-Header aus – entfernt Port.
+ */
+function extractDomain(req) {
+    // 1) X-Forwarded-Host gesetzt durch Reverse-Proxy (nginx)?
+    const forwarded = req.headers['x-forwarded-host'];
+    if (forwarded) return forwarded.split(',')[0].trim().split(':')[0];
+
+    // 2) Origin-Header (z.B. beim direkten Browser-Request)
+    const origin = req.headers['origin'];
+    if (origin) {
+        try {
+            return new URL(origin).hostname;
+        } catch (_) { /* ignore */ }
+    }
+
+    // 3) Host-Header – Port abschneiden
+    const host = req.headers.host || 'localhost';
+    return host.split(':')[0];
+}
+
 module.exports = (requireAuth, requireLicense, LICENSE_SERVER) => {
     router.get('/homepage', async (req, res) => {
         try {
@@ -52,21 +74,36 @@ module.exports = (requireAuth, requireLicense, LICENSE_SERVER) => {
 
     router.get('/license/info', requireAuth, async (req, res) => {
         try {
-            const host = req.headers.host || 'localhost';
-            const lic  = await getCurrentLicense(DB, host);
-            const menu = await DB.getMenu();
+            const domain = extractDomain(req);
+            const lic    = await getCurrentLicense(DB, domain);
+            const menu   = await DB.getMenu();
             res.json({ ...lic, menu_items_used: (menu || []).length, trialDaysLeft: lic.trialDaysLeft, plans: PLAN_DEFINITIONS });
         } catch(e) { res.status(500).json({ success: false, reason: e.message }); }
     });
 
     router.post('/license/validate', async (req, res) => {
         try {
-            const host = req.headers.host || 'localhost';
+            const domain = extractDomain(req);
+            console.log(`🔑 License validate: key=${req.body.key}, domain=${domain}`);
+
             const response = await fetch(`${LICENSE_SERVER}/api/v1/validate`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ license_key: req.body.key, domain: host })
+                body: JSON.stringify({ license_key: req.body.key, domain })
             });
+
             const r = await response.json();
+
+            if (!response.ok) {
+                // Lizenzserver hat 4xx/5xx zurückgegeben – Status + Grund klar ans Frontend
+                console.warn(`⚠️  License server rejected (HTTP ${response.status}):`, r);
+                return res.status(response.status).json({
+                    success: false,
+                    status:  r.status  || 'error',
+                    reason:  r.message || 'Lizenzserver hat die Anfrage abgelehnt.',
+                    debug:   { domain, licenseServer: LICENSE_SERVER }
+                });
+            }
+
             if (r.status === 'active') {
                 const licenseToken = r.license_token || r.token || null;
                 if (!licenseToken) {
@@ -92,10 +129,16 @@ module.exports = (requireAuth, requireLicense, LICENSE_SERVER) => {
                     }
                 };
                 await DB.setKV('settings', settings);
+                console.log(`✅ License activated: ${req.body.key} (${r.type}) for domain ${domain}`);
                 return res.json({ success: true, license: settings.license });
             }
-            res.status(403).json({ success: false, reason: r.message });
-        } catch (e) { res.status(500).json({ success: false, reason: 'Lizenzserver nicht erreichbar.' }); }
+
+            // Lizenzserver hat HTTP 200, aber status != 'active'
+            res.status(403).json({ success: false, status: r.status, reason: r.message });
+        } catch (e) {
+            console.error('❌ License validate error:', e.message);
+            res.status(500).json({ success: false, reason: 'Lizenzserver nicht erreichbar: ' + e.message });
+        }
     });
 
     router.post('/license/modules', requireAuth, async (req, res) => {
