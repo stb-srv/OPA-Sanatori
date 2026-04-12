@@ -27,21 +27,22 @@
 ## Voraussetzungen
 
 **Linux Server (Produktion):**
+
 - Ubuntu 22.04 / 24.04, Debian 12 oder Rocky Linux 9
 - Root-Zugang (einmalig für das Installer-Skript)
 - Offene Ports: 80, 443 (nginx), optional 5000
 
 **Lokal (Entwicklung):**
+
 - Node.js ≥ 18 ([nodejs.org](https://nodejs.org))
 - npm ≥ 9
 - **Native Build-Tools** (werden von `better-sqlite3` benötigt):
 
-| Betriebssystem | Installation |
-|---|---|
-| Ubuntu / Debian | `sudo apt install -y build-essential python3` |
-| Fedora / RHEL / Rocky | `sudo dnf install -y gcc make python3` |
-| macOS | `xcode-select --install` |
-
+| Betriebssystem        | Installation                                  |
+| --------------------- | --------------------------------------------- |
+| Ubuntu / Debian       | `sudo apt install -y build-essential python3` |
+| Fedora / RHEL / Rocky | `sudo dnf install -y gcc make python3`        |
+| macOS                 | `xcode-select --install`                      |
 
 > ℹ️ Das Start-Skript (`start-mac-linux.sh`) prüft diese Voraussetzungen automatisch und gibt eine klare Fehlermeldung, falls etwas fehlt.
 
@@ -63,15 +64,15 @@ sudo ./install-ubuntu.sh
 
 ### Was der Installer erledigt
 
-| Schritt | Was passiert |
-|---|---|
-| System-Update | `apt upgrade`, Basis-Pakete, `openssl` |
-| Node.js 20 LTS | Installation via NodeSource |
-| PM2 | Prozessmanager mit Autostart nach Reboot |
-| `.env` | Wird automatisch erstellt – PORT, CORS & ADMIN_SECRET befüllt |
-| nginx | Reverse Proxy für Port 80 (optional) |
-| SSL / HTTPS | Let's Encrypt via Certbot (optional, Domain muss zeigen) |
-| Firewall (UFW) | Port 80/443 freigegeben, 5000 nur lokal |
+| Schritt        | Was passiert                                                  |
+| -------------- | ------------------------------------------------------------- |
+| System-Update  | `apt upgrade`, Basis-Pakete, `openssl`                        |
+| Node.js 20 LTS | Installation via NodeSource                                   |
+| PM2            | Prozessmanager mit Autostart nach Reboot                      |
+| `.env`         | Wird automatisch erstellt – PORT, CORS & ADMIN_SECRET befüllt |
+| nginx          | Reverse Proxy für Port 80 (optional)                          |
+| SSL / HTTPS    | Let's Encrypt via Certbot (optional, Domain muss zeigen)      |
+| Firewall (UFW) | Port 80/443 freigegeben, 5000 nur lokal                       |
 
 Nach dem Installer läuft das CMS sofort unter `http://<deine-domain>/admin`.
 
@@ -89,12 +90,12 @@ cd /opt/opa-santorini
 bash deploy.sh
 ```
 
-| Merkmal | `install-ubuntu.sh` | `deploy.sh` |
-|---|---|---|
-| Prozessmanager | PM2 | systemd |
-| Zielgruppe | Shared-Server, mehrere Apps | Dedizierter Server, einfaches Setup |
-| HTTPS / Certbot | Optional (interaktiv) | Optional (interaktiv) |
-| Admin-Erstellung | Via Setup-Wizard im Browser | Via Setup-Wizard im Browser |
+| Merkmal          | `install-ubuntu.sh`         | `deploy.sh`                         |
+| ---------------- | --------------------------- | ----------------------------------- |
+| Prozessmanager   | PM2                         | systemd                             |
+| Zielgruppe       | Shared-Server, mehrere Apps | Dedizierter Server, einfaches Setup |
+| HTTPS / Certbot  | Optional (interaktiv)       | Optional (interaktiv)               |
+| Admin-Erstellung | Via Setup-Wizard im Browser | Via Setup-Wizard im Browser         |
 
 ---
 
@@ -122,26 +123,26 @@ Die E-Mail-Konfiguration für Reservierungsbestätigungen wird **vollständig im
 1. Ins CMS einloggen → **⚙️ Einstellungen** → **E-Mail**
 2. Folgende Felder ausfüllen:
 
-| Feld | Beispiel | Erklärung |
-|---|---|---|
-| SMTP Host | `smtp.ionos.de` | Dein E-Mail-Server |
-| SMTP Port | `465` | 465 = SSL/TLS, 587 = STARTTLS |
-| Sicher (SSL) | `✓` | Ein bei Port 465 |
-| Benutzername | `info@meinrestaurant.de` | Dein E-Mail-Login |
-| Passwort | `dein-smtp-passwort` | E-Mail-Passwort |
-| Absender-Name | `Mein Restaurant` | Wird im E-Mail-Client angezeigt |
+| Feld          | Beispiel                 | Erklärung                       |
+| ------------- | ------------------------ | ------------------------------- |
+| SMTP Host     | `smtp.ionos.de`          | Dein E-Mail-Server              |
+| SMTP Port     | `465`                    | 465 = SSL/TLS, 587 = STARTTLS   |
+| Sicher (SSL)  | `✓`                      | Ein bei Port 465                |
+| Benutzername  | `info@meinrestaurant.de` | Dein E-Mail-Login               |
+| Passwort      | `dein-smtp-passwort`     | E-Mail-Passwort                 |
+| Absender-Name | `Mein Restaurant`        | Wird im E-Mail-Client angezeigt |
 
 3. **Speichern** klicken → eine Test-E-Mail wird automatisch an deine Admin-Adresse gesendet
 
 **Gängige SMTP-Einstellungen:**
 
-| Anbieter | Host | Port |
-|---|---|---|
-| IONOS (1&1) | `smtp.ionos.de` | 465 |
-| Strato | `smtp.strato.de` | 465 |
-| GMX | `mail.gmx.net` | 465 |
-| Gmail | `smtp.gmail.com` | 587 |
-| Outlook/Office365 | `smtp.office365.com` | 587 |
+| Anbieter          | Host                 | Port |
+| ----------------- | -------------------- | ---- |
+| IONOS (1&1)       | `smtp.ionos.de`      | 465  |
+| Strato            | `smtp.strato.de`     | 465  |
+| GMX               | `mail.gmx.net`       | 465  |
+| Gmail             | `smtp.gmail.com`     | 587  |
+| Outlook/Office365 | `smtp.office365.com` | 587  |
 
 ---
 
@@ -155,13 +156,13 @@ Das System startet automatisch mit einem **kostenlosen 30-Tage-Trial** (FREE-Pla
 
 **Verfügbare Pläne:**
 
-| Plan | Speisen | Tische | Module |
-|---|---|---|---|
-| FREE (Trial) | 10 | 5 | Speisekarte |
-| Starter | 40 | 10 | + Reservierungen, Bestellungen |
-| Pro | 100 | 25 | + Custom Design |
-| Pro+ | 200 | 50 | + Analytics |
-| Enterprise | 500 | unbegrenzt | Alle Module inkl. QR-Pay |
+| Plan         | Speisen | Tische     | Module                         |
+| ------------ | ------- | ---------- | ------------------------------ |
+| FREE (Trial) | 30      | 5          | Speisekarte                    |
+| Starter      | 40      | 30         | + Reservierungen, Bestellungen |
+| Pro          | 100     | 25         | + Custom Design                |
+| Pro+         | 200     | 50         | + Analytics                    |
+| Enterprise   | 500     | unbegrenzt | Alle Module inkl. QR-Pay       |
 
 ---
 
@@ -233,6 +234,7 @@ chmod +x start-mac-linux.sh
 ```
 
 Das Skript:
+
 - Prüfen automatisch ob Node.js und native Build-Tools vorhanden sind
 - Erstellen automatisch eine `.env` aus `.env.example` (ADMIN_SECRET wird auto-generiert)
 - Installieren fehlende npm-Pakete via `npm install`
@@ -275,6 +277,7 @@ Das Skript:
 ## ✨ Features
 
 ### 🍽️ Speisekarten-Verwaltung
+
 - Gerichte mit Bild, Preis, Nummer & Beschreibung
 - Kategorien, Allergene & Zusatzstoffe
 - PDF-Export der Speisekarte
@@ -282,6 +285,7 @@ Das Skript:
 - Plan-Limit-Prüfung beim Speichern
 
 ### 📅 Reservierungen
+
 - Online-Buchung mit Echtzeit-Verfügbarkeitsprüfung
 - Tisch-Zuweisung & Kombinationstisch-Logik
 - Bestätigungs-/Storno-Links per E-Mail
@@ -290,22 +294,26 @@ Das Skript:
 - Konfigurierbarer Puffer & Aufenthaltsdauer
 
 ### 🌐 Website-Editor
+
 - Startseite, Hero-Bereich, Galerie & Öffnungszeiten
 - Impressum, Datenschutz & Cookie-Banner
 - Standort-Karte einbetten
 - Urlaubs- & Feiertagsverwaltung
 
 ### 🔑 Lizenz-System
+
 - FREE / STARTER / PRO / PRO+ / ENTERPRISE Pläne
 - 30-Tage-Trial beim Setup
 - Lizenz-Aktivierung komplett im Browser
 - Plan-Module einzeln manuell überschreibbar (Admin)
 
 ### 🔌 Plugin-System
+
 - Erweiterungen mit eigenem `server.js` & Frontend
 - Aktivierung/Deaktivierung per Toggle im CMS
 
 ### 🔒 Sicherheit
+
 - CORS Origin-Whitelist (konfigurierbar über `CORS_ORIGINS` in `.env`)
 - Rate-Limiting auf Login & Reservierungen
 - bcrypt-Passwort-Hashing
@@ -317,15 +325,15 @@ Das Skript:
 
 ## 🛠️ Tech Stack
 
-| Bereich | Technologie |
-|---|---|
-| Backend | Node.js, Express |
-| Datenbank | SQLite via `better-sqlite3` |
-| Auth | JWT + bcrypt |
-| Realtime | Socket.io |
-| Frontend | Vanilla JS (ES Modules) |
-| Styling | CSS Custom Properties, Glassmorphism |
-| E-Mail | Nodemailer (SMTP, dynamisch aus DB) |
+| Bereich        | Technologie                                      |
+| -------------- | ------------------------------------------------ |
+| Backend        | Node.js, Express                                 |
+| Datenbank      | SQLite via `better-sqlite3`                      |
+| Auth           | JWT + bcrypt                                     |
+| Realtime       | Socket.io                                        |
+| Frontend       | Vanilla JS (ES Modules)                          |
+| Styling        | CSS Custom Properties, Glassmorphism             |
+| E-Mail         | Nodemailer (SMTP, dynamisch aus DB)              |
 | Prozessmanager | PM2 (install-ubuntu.sh) oder systemd (deploy.sh) |
 
 ---
