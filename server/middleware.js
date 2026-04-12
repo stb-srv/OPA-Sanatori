@@ -3,7 +3,7 @@
  */
 const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
-const { getCurrentLicense } = require('./license.js');
+const { getCurrentLicense, verifyLicenseToken } = require('./license.js');
 const DB = require('./database.js');
 
 const requireAuth = (ADMIN_SECRET) => (req, res, next) => {
@@ -13,9 +13,41 @@ const requireAuth = (ADMIN_SECRET) => (req, res, next) => {
     catch (e) { res.status(401).json({ success: false, reason: 'Invalid session' }); }
 };
 
+/**
+ * FIX SEC-02: requireLicense prueft jetzt immer das RS256-signierte JWT via
+ * verifyLicenseToken(). Alleiniger DB-Cache-Read reicht nicht mehr aus.
+ * Wer DB-Zugriff hat, kann Module NICHT mehr ohne gueltigen Token freischalten.
+ */
 const requireLicense = (module) => (req, res, next) => {
-    const l = DB.getKV('settings')?.license || {};
-    if (!l.modules || !l.modules[module]) return res.status(403).json({ success: false, reason: `Feature '${module}' gesperrt.` });
+    const settings = DB.getKV('settings', {});
+    const lic = settings.license || {};
+
+    // Trial-Lizenzen: Modul-Check direkt am Plan
+    if (lic.isTrial) {
+        if (!lic.modules || !lic.modules[module]) {
+            return res.status(403).json({ success: false, reason: `Feature '${module}' gesperrt.` });
+        }
+        return next();
+    }
+
+    // Vollizenz: JWT MUSS gueltig und signiert sein
+    const token = lic.licenseToken || null;
+    const host = req.hostname || null;
+    const payload = verifyLicenseToken(token, host);
+
+    if (!payload) {
+        return res.status(403).json({
+            success: false,
+            reason: `Feature '${module}' gesperrt – kein gültiges Lizenz-Token.`
+        });
+    }
+
+    // Modul-Check am verifizierten Payload
+    const allowedModules = payload.allowed_modules || {};
+    if (!allowedModules[module]) {
+        return res.status(403).json({ success: false, reason: `Feature '${module}' ist in Ihrem Plan nicht enthalten.` });
+    }
+
     next();
 };
 
