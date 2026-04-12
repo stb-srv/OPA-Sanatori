@@ -34,7 +34,7 @@ class LicenseChecker {
             this._check();
             this.timer = setInterval(() => this._check(), CHECK_INTERVAL_MS);
         }, STARTUP_DELAY_MS);
-        console.log(`🔒 LicenseChecker gestartet – erster Check in 5 Minuten, dann alle 24h.`);
+        console.log(`\uD83D\uDD12 LicenseChecker gestartet \u2013 erster Check in 5 Minuten, dann alle 24h.`);
     }
 
     stop() {
@@ -49,9 +49,11 @@ class LicenseChecker {
         // Trial-Lizenzen oder keine Lizenz: kein Online-Check nötig
         if (!lic.key || lic.isTrial) return;
 
-        console.log(`🔄 [${new Date().toISOString()}] Lizenz-Online-Check läuft...`);
+        console.log(`\uD83D\uDD04 [${new Date().toISOString()}] Lizenz-Online-Check l\u00e4uft...`);
 
         try {
+            // FIX: /heartbeat umbenannt zu /refresh – der Lizenzserver liefert dort
+            // { status: 'active', token: '<JWT>' } exakt im erwarteten Format zurück.
             const response = await fetch(`${this.licenseServerUrl}/api/v1/refresh`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -66,23 +68,26 @@ class LicenseChecker {
 
             const data = await response.json();
 
-            if (data.status === 'active' && data.token) {
+            // Rückwärtskompatibilität: token ODER license_token akzeptieren
+            const rawToken = data.token || data.license_token || null;
+
+            if (data.status === 'active' && rawToken) {
                 // Signatur prüfen bevor wir den Token speichern
-                const payload = verifyLicenseToken(data.token, this.host);
+                const payload = verifyLicenseToken(rawToken, this.host);
                 if (!payload) {
                     throw new Error('Server returned token with invalid signature');
                 }
 
                 // Frischen Token in DB speichern
-                settings.license.licenseToken = data.token;
+                settings.license.licenseToken = rawToken;
                 this.DB.setKV('settings', settings);
 
                 this.failCount = 0;
                 this.degraded  = false;
-                console.log(`✅ [${new Date().toISOString()}] Lizenz-Token erfolgreich erneuert (Plan: ${payload.type}, Domain: ${payload.domain}).`);
+                console.log(`\u2705 [${new Date().toISOString()}] Lizenz-Token erfolgreich erneuert (Plan: ${payload.type}, Domain: ${payload.domain}).`);
 
             } else if (data.status === 'revoked' || data.status === 'cancelled') {
-                console.warn(`⚠️  Lizenz wurde vom Server widerrufen (${data.status}). Degradiere auf FREE.`);
+                console.warn(`\u26a0\ufe0f  Lizenz wurde vom Server widerrufen (${data.status}). Degradiere auf FREE.`);
                 this._degrade(settings, 'revoked');
 
             } else {
@@ -91,10 +96,10 @@ class LicenseChecker {
 
         } catch (e) {
             this.failCount++;
-            console.warn(`⚠️  [${new Date().toISOString()}] Lizenz-Check Fehler (${this.failCount}/${MAX_FAILURES}): ${e.message}`);
+            console.warn(`\u26a0\ufe0f  [${new Date().toISOString()}] Lizenz-Check Fehler (${this.failCount}/${MAX_FAILURES}): ${e.message}`);
 
             if (this.failCount >= MAX_FAILURES) {
-                console.error(`❌ Lizenz-Check ${MAX_FAILURES}x fehlgeschlagen – Graceful Degradation auf FREE aktiv.`);
+                console.error(`\u274c Lizenz-Check ${MAX_FAILURES}x fehlgeschlagen \u2013 Graceful Degradation auf FREE aktiv.`);
                 this._degrade(settings, 'unreachable');
             }
         }
