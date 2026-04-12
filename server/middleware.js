@@ -14,7 +14,24 @@ const requireAuth = (ADMIN_SECRET) => (req, res, next) => {
 };
 
 /**
+ * Extrahiert die saubere Domain aus dem Request.
+ * Wertet X-Forwarded-Host, Origin und Host-Header aus – entfernt Port.
+ * Konsistent mit settings.js und menu.js.
+ */
+function extractDomain(req) {
+    const forwarded = req.headers['x-forwarded-host'];
+    if (forwarded) return forwarded.split(',')[0].trim().split(':')[0];
+    const origin = req.headers['origin'];
+    if (origin) {
+        try { return new URL(origin).hostname; } catch (_) { /* ignore */ }
+    }
+    const host = req.headers.host || 'localhost';
+    return host.split(':')[0];
+}
+
+/**
  * requireLicense – prüft RS256-signiertes JWT oder Trial-Plan.
+ * Nutzt extractDomain() statt req.hostname um Domain-Mismatch hinter Nginx zu vermeiden.
  * ASYNC: DB.getKV ist bei MySQL ein Promise.
  */
 const requireLicense = (module) => async (req, res, next) => {
@@ -32,7 +49,7 @@ const requireLicense = (module) => async (req, res, next) => {
 
         // Vollizenz: JWT MUSS gültig und signiert sein
         const token   = lic.licenseToken || null;
-        const host    = req.hostname || null;
+        const host    = extractDomain(req); // FIX: X-Forwarded-Host statt req.hostname
         const payload = verifyLicenseToken(token, host);
 
         if (!payload) {
@@ -60,7 +77,8 @@ const requireLicense = (module) => async (req, res, next) => {
  */
 const requireMenuLimit = async (req, res, next) => {
     try {
-        const lic = await getCurrentLicense(DB);
+        const host = extractDomain(req);
+        const lic = await getCurrentLicense(DB, host);
         const maxDishes = lic.limits?.max_dishes ?? 10;
         const incomingItems = Array.isArray(req.body) ? req.body : [];
         if (incomingItems.length > maxDishes) {
