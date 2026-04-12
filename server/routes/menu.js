@@ -5,6 +5,21 @@ const router = require('express').Router();
 const DB = require('../database.js');
 const { getCurrentLicense } = require('../license.js');
 
+/**
+ * Extrahiert die saubere Domain aus dem Request.
+ * Konsistent mit settings.js – verhindert FREE-Fallback durch Domain-Mismatch.
+ */
+function extractDomain(req) {
+    const forwarded = req.headers['x-forwarded-host'];
+    if (forwarded) return forwarded.split(',')[0].trim().split(':')[0];
+    const origin = req.headers['origin'];
+    if (origin) {
+        try { return new URL(origin).hostname; } catch (_) { /* ignore */ }
+    }
+    const host = req.headers.host || 'localhost';
+    return host.split(':')[0];
+}
+
 module.exports = (requireAuth, requireLicense) => {
     // --- Menu ---
     router.get('/menu', async (req, res) => {
@@ -14,7 +29,8 @@ module.exports = (requireAuth, requireLicense) => {
 
     router.post('/menu', requireAuth, requireLicense('menu_edit'), async (req, res) => {
         try {
-            const lic = await getCurrentLicense(DB);
+            const domain = extractDomain(req);
+            const lic = await getCurrentLicense(DB, domain);
             const maxDishes = lic.limits?.max_dishes ?? 10;
             const menu = await DB.getMenu();
             if (menu.length >= maxDishes)
@@ -89,7 +105,8 @@ module.exports = (requireAuth, requireLicense) => {
     router.post('/menu/import', requireAuth, async (req, res) => {
         try {
             const { menu, categories, allergens, additives } = req.body;
-            const lic = await getCurrentLicense(DB);
+            const domain = extractDomain(req);
+            const lic = await getCurrentLicense(DB, domain);
             const maxDishes = lic.limits?.max_dishes ?? 10;
             if (menu && Array.isArray(menu) && menu.length > maxDishes) {
                 return res.status(403).json({
