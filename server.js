@@ -56,7 +56,7 @@ app.use((req, res, next) => {
     res.redirect('/setup');
 });
 
-// Build requireAuth with current ADMIN_SECRET
+// requireAuth
 const requireAuth = (req, res, next) => {
     const token = req.headers['x-admin-token'];
     if (!token) return res.status(401).json({ success: false, reason: 'No token' });
@@ -85,24 +85,24 @@ const getInstalledPlugins = () => {
         .map(dir => { try { return JSON.parse(fs.readFileSync(path.join(PLUGINS_DIR, dir, 'plugin.json'))); } catch(e) { return null; } })
         .filter(Boolean);
 };
-app.get('/api/plugins', requireAuth, (req, res) => {
-    const installed = getInstalledPlugins(), dbPlugins = DB.getKV('plugins', []);
-    res.json(installed.map(p => { const dbP = dbPlugins.find(x => x.id === p.id); return { ...p, enabled: dbP ? dbP.enabled : false }; }));
+
+app.get('/api/plugins', requireAuth, async (req, res) => {
+    try {
+        const installed  = getInstalledPlugins();
+        const dbPlugins  = await DB.getKV('plugins', []);
+        res.json(installed.map(p => { const dbP = dbPlugins.find(x => x.id === p.id); return { ...p, enabled: dbP ? dbP.enabled : false }; }));
+    } catch(e) { res.status(500).json({ success: false, reason: e.message }); }
 });
-app.post('/api/plugins/toggle', requireAuth, (req, res) => {
-    let dbPlugins = DB.getKV('plugins', []);
-    const { id, enabled } = req.body;
-    const idx = dbPlugins.findIndex(p => p.id === id);
-    if (idx > -1) dbPlugins[idx].enabled = enabled; else dbPlugins.push({ id, enabled });
-    DB.setKV('plugins', dbPlugins); res.json({ success: true });
-});
-DB.getKV('plugins', []).filter(p => p.enabled).forEach(p => {
-    const safeId = path.basename(p.id);
-    const serverPath = path.join(PLUGINS_DIR, safeId, 'server.js');
-    if (fs.existsSync(serverPath)) {
-        try { const plug = require(serverPath); if (typeof plug === 'function') plug(app, { DB, requireAuth, requireLicense }); }
-        catch(e) { console.error(`❌ Plugin load failed (${safeId}):`, e); }
-    }
+
+app.post('/api/plugins/toggle', requireAuth, async (req, res) => {
+    try {
+        let dbPlugins = await DB.getKV('plugins', []);
+        const { id, enabled } = req.body;
+        const idx = dbPlugins.findIndex(p => p.id === id);
+        if (idx > -1) dbPlugins[idx].enabled = enabled; else dbPlugins.push({ id, enabled });
+        await DB.setKV('plugins', dbPlugins);
+        res.json({ success: true });
+    } catch(e) { res.status(500).json({ success: false, reason: e.message }); }
 });
 
 // --- Setup Wizard ---
@@ -125,11 +125,11 @@ app.post('/api/setup', async (req, res) => {
         const configPath = path.join(__dirname, 'server', 'config.json');
         fs.writeFileSync(configPath, JSON.stringify(newConfig, null, 4));
         Object.assign(CONFIG, newConfig);
-        const settings = DB.getKV('settings', {});
+        const settings = await DB.getKV('settings', {});
         settings.license = trialLicense;
         if (smtp && smtp.host) settings.smtp = smtp;
-        DB.setKV('settings', settings);
-        if (restaurantName) { const b = DB.getKV('branding', {}); b.name = restaurantName; DB.setKV('branding', b); }
+        await DB.setKV('settings', settings);
+        if (restaurantName) { const b = await DB.getKV('branding', {}); b.name = restaurantName; await DB.setKV('branding', b); }
         const finalAdminUser = adminUser || 'admin';
         const finalAdminPass = adminPass || 'admin';
         const hash = await bcrypt.hash(finalAdminPass, 10);
@@ -143,7 +143,7 @@ app.post('/api/setup', async (req, res) => {
             plainRecoveryCodes.push(code);
             hashedCodes.push(await bcrypt.hash(code, 10));
         }
-        DB.addUser({ user: finalAdminUser, pass: hash, name: 'Setup', last_name: 'Admin', email: adminEmail || '', role: 'admin', require_password_change: 0, recovery_codes: hashedCodes });
+        await DB.addUser({ user: finalAdminUser, pass: hash, name: 'Setup', last_name: 'Admin', email: adminEmail || '', role: 'admin', require_password_change: 0, recovery_codes: hashedCodes });
         res.json({ success: true, trial: trialLicense, message: 'Setup abgeschlossen.', recovery_codes: plainRecoveryCodes });
     } catch (e) {
         console.error(`❌ Setup error:`, e);
@@ -165,21 +165,48 @@ app.use((err, req, res, next) => {
 });
 
 // --- Trial Expiry Job ---
-setInterval(() => {
+setInterval(async () => {
     try {
-        const settings = DB.getKV('settings', {});
+        const settings = await DB.getKV('settings', {});
         const lic = settings.license;
         if (lic && lic.isTrial && lic.expiresAt && new Date(lic.expiresAt) < new Date() && lic.status !== 'expired') {
             console.log(`⏰ Trial license expired.`);
             lic.status = 'expired';
-            DB.setKV('settings', settings);
+            await DB.setKV('settings', settings);
         }
     } catch (e) { console.error('Trial cleanup error:', e.message); }
 }, 60 * 60 * 1000);
 
-server.listen(PORT, () => {
-    console.log(`\n🚀 OPA-CMS v${APP_VERSION} – Port ${PORT}`);
-    console.log(`🔒 License Server: ${LICENSE_SERVER}`);
-    console.log(`🌐 CORS Origins:   ${allowedOrigins.join(', ')}`);
-    console.log(`⏰ Started at:     ${new Date().toLocaleString('de-DE')}\n`);
+// =============================================================================
+// Bootstrap: async Start (Plugin-Loader + Server-Listen)
+// =============================================================================
+async function start() {
+    // Plugins laden (braucht await DB.getKV)
+    try {
+        const enabledPlugins = await DB.getKV('plugins', []);
+        enabledPlugins.filter(p => p.enabled).forEach(p => {
+            const safeId     = path.basename(p.id);
+            const serverPath = path.join(PLUGINS_DIR, safeId, 'server.js');
+            if (fs.existsSync(serverPath)) {
+                try {
+                    const plug = require(serverPath);
+                    if (typeof plug === 'function') plug(app, { DB, requireAuth, requireLicense });
+                } catch(e) { console.error(`❌ Plugin load failed (${safeId}):`, e); }
+            }
+        });
+    } catch(e) {
+        console.warn('⚠️  Plugin-Loader Fehler (nicht kritisch):', e.message);
+    }
+
+    server.listen(PORT, () => {
+        console.log(`\n🚀 OPA-CMS v${APP_VERSION} – Port ${PORT}`);
+        console.log(`🔒 License Server: ${LICENSE_SERVER}`);
+        console.log(`🌐 CORS Origins:   ${allowedOrigins.join(', ')}`);
+        console.log(`⏰ Started at:     ${new Date().toLocaleString('de-DE')}\n`);
+    });
+}
+
+start().catch(e => {
+    console.error('❌ Server-Start fehlgeschlagen:', e);
+    process.exit(1);
 });
