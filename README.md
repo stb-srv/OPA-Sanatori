@@ -17,6 +17,7 @@
 - [Admin-Passwort vergessen?](#-admin-passwort-vergessen)
 - [Lokale Entwicklung (Mac / Linux)](#-lokale-entwicklung-mac--linux)
 - [CMS-Navigation](#cms-navigation)
+- [Hilfs-Skripte](#-hilfs-skripte)
 - [Features](#-features)
 - [Tech Stack](#-tech-stack)
 - [Projektstruktur](#-projektstruktur)
@@ -71,7 +72,7 @@ sudo ./install-ubuntu.sh
 | PM2            | Prozessmanager mit Autostart nach Reboot                      |
 | `.env`         | Wird automatisch erstellt – PORT, CORS & ADMIN_SECRET befüllt |
 | nginx          | Reverse Proxy für Port 80 (optional)                          |
-| SSL / HTTPS    | Let's Encrypt via Certbot (optional, Domain muss zeigen)      |
+| SSL / HTTPS    | Let’s Encrypt via Certbot (optional, Domain muss zeigen)      |
 | Firewall (UFW) | Port 80/443 freigegeben, 5000 nur lokal                       |
 
 Nach dem Installer läuft das CMS sofort unter `http://<deine-domain>/admin`.
@@ -274,6 +275,92 @@ Das Skript:
 
 ---
 
+## 🛠️ Hilfs-Skripte
+
+Alle Skripte liegen im Ordner `scripts/` und werden direkt auf dem Server ausgeführt.
+
+### 🔒 fix-license-token.js
+
+Erneuert das Lizenz-JWT in der Datenbank, falls es abgelaufen oder ungültig ist.
+
+```bash
+node scripts/fix-license-token.js deine-domain.de
+pm2 restart opa-cms
+```
+
+---
+
+### 🌄 auto-images.js – Automatische Speisefotos
+
+Lädt für alle Gerichte ohne Bild automatisch ein passendes Foto von **Pexels** oder **Unsplash** herunter und speichert es direkt in der Datenbank.
+
+> ⚠️ **Nur für Testzwecke geeignet.**  
+> Für den Produktivbetrieb sollten ausschließlich **eigene Produktfotos** verwendet werden.  
+> Stock-Fotos von Pexels/Unsplash unterliegen deren jeweiligen Lizenzbedingungen und sind **nicht für kommerzielle Produktpräsentation** ohne Attribution gedacht. Eigene Fotos vermeiden Copyright-Risiken, wirken professioneller und erhöhen das Vertrauen der Gäste.
+
+#### Setup (einmalig)
+
+**Pexels** (empfohlen – 200 req/h, kein Tageslimit):
+1. → [pexels.com/api](https://www.pexels.com/api/) – kostenlos registrieren
+2. API Key kopieren und in `.env` eintragen:
+```env
+PEXELS_API_KEY=dein_pexels_key
+```
+
+**Unsplash** (optional, zusätzlicher Fallback – 50 req/h):
+1. → [unsplash.com/developers](https://unsplash.com/developers) – kostenlos registrieren
+2. Access Key kopieren und in `.env` eintragen:
+```env
+UNSPLASH_ACCESS_KEY=dein_unsplash_key
+```
+
+#### Verwendung
+
+```bash
+# Erst testen – nichts wird gespeichert:
+node scripts/auto-images.js --dry-run
+
+# Alle Gerichte ohne Bild bebildern:
+node scripts/auto-images.js
+
+# Nur die ersten 20 (zum schrittweisen Testen):
+node scripts/auto-images.js --limit 20
+
+# Auch Gerichte mit vorhandenem Bild ersetzen:
+node scripts/auto-images.js --overwrite
+
+# Nur eine bestimmte Quelle verwenden:
+node scripts/auto-images.js --source pexels
+node scripts/auto-images.js --source unsplash
+```
+
+#### Beispiel-Ausgabe
+
+```
+🌄 OPA-CMS Auto-Image Script
+==================================================
+🔑 Pexels:   ✅ aktiv (200 req/h, kein Tageslimit)
+🔑 Unsplash: ✅ aktiv (50 req/h)
+🎯 Modus:    Auto (Pexels → Unsplash Fallback)
+
+📊 Gerichte gesamt:  131
+🔍 Zu bebildern:     87
+
+[1/87]  "Gyros Teller"   ... ✅ 📸 Pexels   | Jane Doe -> /uploads/auto-xxx.jpg
+[2/87]  "Spanakopita"    ... ✅ 🌄 Unsplash | John Smith -> /uploads/auto-yyy.jpg
+[3/87]  "Ouzo Sorbet"    ... ⚠️  Kein Bild gefunden – übersprungen.
+```
+
+| Option | Beschreibung |
+|---|---|
+| `--dry-run` | Nur Vorschau, nichts wird gespeichert |
+| `--limit N` | Maximal N Gerichte verarbeiten |
+| `--overwrite` | Auch Gerichte mit vorhandenem Bild ersetzen |
+| `--source pexels` | Nur Pexels verwenden |
+| `--source unsplash` | Nur Unsplash verwenden |
+
+---
+
 ## ✨ Features
 
 ### 🍽️ Speisekarten-Verwaltung
@@ -358,7 +445,9 @@ Das Skript:
 │   ├── mailer.js          # E-Mail-Versand (Nodemailer, dynamischer SMTP)
 │   └── api.js             # ⚠️ Legacy / deprecated – nicht mehr aktiv
 ├── scripts/
-│   └── create-admin.js    # Hilfsskript: Admin-User anlegen (Konsole)
+│   ├── fix-license-token.js  # Lizenz-Token in DB erneuern
+│   ├── auto-images.js        # Automatische Speisefotos via Pexels/Unsplash (nur Test!)
+│   └── create-admin.js       # Hilfsskript: Admin-User anlegen (Konsole)
 ├── cms/                   # Admin-Interface
 │   ├── index.html
 │   ├── setup.html         # Setup-Wizard (Ersteinrichtung)
