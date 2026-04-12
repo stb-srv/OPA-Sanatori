@@ -127,7 +127,7 @@
                         </a>
                         <div class="nav-submenu">
                             <a class="nav-subitem" data-view="reservations" href="#reservations">Reservierungen</a>
-                            <a class="nav-subitem" data-view="archive"       href="#archive" style="padding-left:68px; font-size:.75rem; opacity:.75;">Archiv</a>
+                            <a class="nav-subitem nav-subitem--archive" data-view="archive" href="#archive">Archiv</a>
                             <a class="nav-subitem" data-view="tables"        href="#tables">Tische</a>
                             <a class="nav-subitem" data-view="opening"       href="#opening">Öffnungszeiten</a>
                             <a class="nav-subitem" data-view="orders"        href="#orders" id="nav-orders">🔔 Küchen-Monitor</a>
@@ -177,8 +177,8 @@
                     </div>
                     <div class="header-right">
                         <div class="user-profile">
-                            <span>Willkommen, <strong>Nikos</strong></span>
-                            <img src="https://ui-avatars.com/api/?name=Nikos&background=2b6cb0&color=fff" alt="Avatar" class="avatar">
+                            <span>Willkommen, <strong id="disp-user-name">–</strong></span>
+                            <img id="disp-user-avatar" src="https://ui-avatars.com/api/?name=Admin&background=2b6cb0&color=fff" alt="Avatar" class="avatar">
                             <button id="btn-logout" style="background:none; border:none; cursor:pointer; color:var(--primary); font-weight:800; margin-left:15px;">Logout</button>
                         </div>
                     </div>

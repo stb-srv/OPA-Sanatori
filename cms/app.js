@@ -1,5 +1,5 @@
 /**
- * Main Entry Point for Grieche-CMS (Modular Version)
+ * Main Entry Point for OPA-CMS (Modular Version)
  */
 
 import { checkAuth, login, logout } from './modules/auth.js';
@@ -9,6 +9,7 @@ import { renderDashboard } from './modules/dashboard.js';
 import { renderMenu } from './modules/menu.js';
 import { renderReservations, renderArchive } from './modules/reservations.js';
 import { renderTableManager } from './modules/tables.js';
+import { renderTablePlanner } from './modules/table-planner.js';
 import { renderDesigner } from './modules/designer.js';
 import { renderSettings } from './modules/settings.js';
 import { renderOpeningHours } from './modules/opening.js';
@@ -33,12 +34,26 @@ function scheduleTokenExpiryWarning() {
         const payload = JSON.parse(atob(token.split('.')[1]));
         if (!payload.exp) return;
         const expiresInMs = (payload.exp * 1000) - Date.now();
-        const warnMs = expiresInMs - (5 * 60 * 1000); // 5 Minuten vorher warnen
+        const warnMs = expiresInMs - (5 * 60 * 1000);
         if (warnMs > 0) {
             tokenExpiryTimer = setTimeout(() => {
                 showToast('Ihre Sitzung läuft in 5 Minuten ab. Bitte speichern Sie Ihre Arbeit.', 'warning');
             }, warnMs);
         }
+    } catch (e) {}
+}
+
+/** Liest den Benutzernamen aus dem JWT-Token und zeigt ihn im Header an */
+function applyUserFromToken() {
+    const token = sessionStorage.getItem('opa_admin_token');
+    if (!token) return;
+    try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        const name = payload.name || payload.user || payload.sub || 'Admin';
+        const nameEl   = document.getElementById('disp-user-name');
+        const avatarEl = document.getElementById('disp-user-avatar');
+        if (nameEl)   nameEl.textContent = name;
+        if (avatarEl) avatarEl.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=2b6cb0&color=fff`;
     } catch (e) {}
 }
 
@@ -51,7 +66,6 @@ async function init() {
         return;
     }
 
-    // Check if password change is required via token payload
     const token = sessionStorage.getItem('opa_admin_token');
     if (token) {
         try {
@@ -71,6 +85,7 @@ async function init() {
     loginContainer.style.display = 'none';
     adminDashboard.style.display = 'flex';
 
+    applyUserFromToken();
     scheduleTokenExpiryWarning();
     switchView('stats');
 
@@ -79,7 +94,7 @@ async function init() {
         document.getElementById('disp-res-name').textContent    = branding.name   || 'OPA! Santorini';
         document.getElementById('disp-res-slogan').textContent  = branding.slogan || 'Restaurant Management';
         if (branding.name) document.title = branding.name + ' CMS';
-        
+
         if (branding.favicon) {
             let link = document.querySelector("link[rel~='icon']");
             if (!link) {
@@ -96,7 +111,6 @@ async function init() {
 }
 
 export function updateSidebarVisibility(settings) {
-    // Küchen-Monitor im Restaurant-Submenü ein-/ausblenden
     const ordersItem = document.getElementById('nav-orders');
     if (ordersItem) {
         ordersItem.style.display = settings.activeModules?.orders !== false ? 'flex' : 'none';
@@ -145,6 +159,9 @@ async function switchView(view, tab = null) {
         case 'tables':
             await renderTableManager(contentView, viewTitle);
             break;
+        case 'table-planner':
+            await renderTablePlanner(contentView, viewTitle);
+            break;
         case 'settings':
             await renderSettings(contentView, viewTitle);
             break;
@@ -153,6 +170,15 @@ async function switchView(view, tab = null) {
             break;
         case 'orders':
             await renderOrders(contentView, viewTitle);
+            break;
+        case 'plugins-manager':
+            contentView.innerHTML = `
+                <div class="glass-panel" style="padding:60px; text-align:center; opacity:.6;">
+                    <i class="fas fa-puzzle-piece" style="font-size:3rem; margin-bottom:20px; display:block;"></i>
+                    <h3>Erweiterungen</h3>
+                    <p style="margin-top:8px; font-size:.9rem;">Plugin-Verwaltung wird in Kürze verfügbar sein.</p>
+                </div>`;
+            viewTitle.innerHTML = '<i class="fas fa-puzzle-piece"></i> Erweiterungen';
             break;
         default:
             contentView.innerHTML = `<div style="padding:100px; text-align:center; opacity:.5;"><h3>Ansicht "${view}" wird noch entwickelt.</h3></div>`;
@@ -179,9 +205,9 @@ if (loginForm) {
     };
 
     const linkForgot = document.getElementById('link-forgot-pass');
-    const linkBack = document.getElementById('link-back-login');
+    const linkBack   = document.getElementById('link-back-login');
     const forgotContainer = document.getElementById('forgot-password-container');
-    const forgotForm = document.getElementById('forgot-password-form');
+    const forgotForm      = document.getElementById('forgot-password-form');
 
     if (linkForgot) {
         linkForgot.onclick = (e) => {
@@ -190,7 +216,7 @@ if (loginForm) {
             if (forgotContainer) forgotContainer.style.display = 'flex';
         };
     }
-    
+
     if (linkBack) {
         linkBack.onclick = (e) => {
             e.preventDefault();
@@ -203,11 +229,11 @@ if (loginForm) {
         forgotForm.onsubmit = async (e) => {
             e.preventDefault();
             const user = document.getElementById('forgot-username').value;
-            const btn = document.getElementById('btn-forgot-submit');
+            const btn  = document.getElementById('btn-forgot-submit');
             if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Sende...'; }
-            
+
             try {
-                const res = await fetch('/api/admin/forgot-password', {
+                const res  = await fetch('/api/admin/forgot-password', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ user })
@@ -238,10 +264,10 @@ if (pwdChangeForm) {
         e.preventDefault();
         const newPassword = document.getElementById('new-password').value;
         if (newPassword.length < 6) return showToast('Passwort muss mind. 6 Zeichen haben.', 'error');
-        
+
         try {
             const token = sessionStorage.getItem('opa_admin_token');
-            const res = await fetch('/api/admin/change-password', {
+            const res   = await fetch('/api/admin/change-password', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'x-admin-token': token },
                 body: JSON.stringify({ newPassword })
