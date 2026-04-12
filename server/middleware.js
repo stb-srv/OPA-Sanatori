@@ -14,55 +14,67 @@ const requireAuth = (ADMIN_SECRET) => (req, res, next) => {
 };
 
 /**
- * FIX SEC-02: requireLicense prueft jetzt immer das RS256-signierte JWT via
- * verifyLicenseToken(). Alleiniger DB-Cache-Read reicht nicht mehr aus.
- * Wer DB-Zugriff hat, kann Module NICHT mehr ohne gueltigen Token freischalten.
+ * requireLicense – prüft RS256-signiertes JWT oder Trial-Plan.
+ * ASYNC: DB.getKV ist bei MySQL ein Promise.
  */
-const requireLicense = (module) => (req, res, next) => {
-    const settings = DB.getKV('settings', {});
-    const lic = settings.license || {};
+const requireLicense = (module) => async (req, res, next) => {
+    try {
+        const settings = await DB.getKV('settings', {});
+        const lic = settings.license || {};
 
-    // Trial-Lizenzen: Modul-Check direkt am Plan
-    if (lic.isTrial) {
-        if (!lic.modules || !lic.modules[module]) {
-            return res.status(403).json({ success: false, reason: `Feature '${module}' gesperrt.` });
+        // Trial-Lizenzen: Modul-Check direkt am Plan
+        if (lic.isTrial) {
+            if (!lic.modules || !lic.modules[module]) {
+                return res.status(403).json({ success: false, reason: `Feature '${module}' gesperrt.` });
+            }
+            return next();
         }
-        return next();
+
+        // Vollizenz: JWT MUSS gültig und signiert sein
+        const token   = lic.licenseToken || null;
+        const host    = req.hostname || null;
+        const payload = verifyLicenseToken(token, host);
+
+        if (!payload) {
+            return res.status(403).json({
+                success: false,
+                reason: `Feature '${module}' gesperrt – kein gültiges Lizenz-Token.`
+            });
+        }
+
+        const allowedModules = payload.allowed_modules || {};
+        if (!allowedModules[module]) {
+            return res.status(403).json({ success: false, reason: `Feature '${module}' ist in Ihrem Plan nicht enthalten.` });
+        }
+
+        next();
+    } catch(e) {
+        console.error('requireLicense error:', e.message);
+        res.status(500).json({ success: false, reason: 'Lizenzprüfung fehlgeschlagen.' });
     }
-
-    // Vollizenz: JWT MUSS gueltig und signiert sein
-    const token = lic.licenseToken || null;
-    const host = req.hostname || null;
-    const payload = verifyLicenseToken(token, host);
-
-    if (!payload) {
-        return res.status(403).json({
-            success: false,
-            reason: `Feature '${module}' gesperrt – kein gültiges Lizenz-Token.`
-        });
-    }
-
-    // Modul-Check am verifizierten Payload
-    const allowedModules = payload.allowed_modules || {};
-    if (!allowedModules[module]) {
-        return res.status(403).json({ success: false, reason: `Feature '${module}' ist in Ihrem Plan nicht enthalten.` });
-    }
-
-    next();
 };
 
-const requireMenuLimit = (req, res, next) => {
-    const lic = getCurrentLicense(DB);
-    const maxDishes = lic.limits?.max_dishes ?? 10;
-    const incomingItems = Array.isArray(req.body) ? req.body : [];
-    if (incomingItems.length > maxDishes) {
-        return res.status(403).json({
-            success: false,
-            reason: `Ihr ${lic.label || lic.type}-Plan erlaubt maximal ${maxDishes} Speisen. Bitte upgraden Sie Ihren Plan.`,
-            limit: maxDishes, current: incomingItems.length, plan: lic.type
-        });
+/**
+ * requireMenuLimit – prüft Speisenlimit des aktuellen Plans.
+ * ASYNC: getCurrentLicense ist jetzt async.
+ */
+const requireMenuLimit = async (req, res, next) => {
+    try {
+        const lic = await getCurrentLicense(DB);
+        const maxDishes = lic.limits?.max_dishes ?? 10;
+        const incomingItems = Array.isArray(req.body) ? req.body : [];
+        if (incomingItems.length > maxDishes) {
+            return res.status(403).json({
+                success: false,
+                reason: `Ihr ${lic.label || lic.type}-Plan erlaubt maximal ${maxDishes} Speisen. Bitte upgraden Sie Ihren Plan.`,
+                limit: maxDishes, current: incomingItems.length, plan: lic.type
+            });
+        }
+        next();
+    } catch(e) {
+        console.error('requireMenuLimit error:', e.message);
+        next(); // im Zweifel durchlassen
     }
-    next();
 };
 
 const loginLimiter = rateLimit({
