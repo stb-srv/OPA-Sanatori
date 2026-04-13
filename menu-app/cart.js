@@ -14,8 +14,11 @@
     'use strict';
 
     const STORAGE_KEY = 'opa_cart';
-    let cartItems   = [];
-    let cartConfig  = { ordersEnabled: false, deliveryEnabled: false, pickupEnabled: false, dineInEnabled: false, isOpenNow: true, closedReason: null };
+    let cartItems    = [];
+    let cartConfig   = {
+        ordersEnabled: false, deliveryEnabled: false, pickupEnabled: false,
+        dineInEnabled: false, isOpenNow: true, closedReason: null, minPickupTime: null
+    };
     let configLoaded = false;
 
     function loadCart() {
@@ -32,9 +35,7 @@
         const existing = cartItems.find(i => i.id === item.id);
         if (existing) { existing.quantity += 1; }
         else { cartItems.push({ ...item, quantity: 1 }); }
-        saveCart();
-        render();
-        animateBadge();
+        saveCart(); render(); animateBadge();
     }
 
     function removeItem(id) {
@@ -43,16 +44,10 @@
             cartItems[idx].quantity -= 1;
             if (cartItems[idx].quantity <= 0) cartItems.splice(idx, 1);
         }
-        saveCart();
-        render();
+        saveCart(); render();
     }
 
-    function clearCart() {
-        cartItems = [];
-        saveCart();
-        render();
-    }
-
+    function clearCart() { cartItems = []; saveCart(); render(); }
     function totalCount() { return cartItems.reduce((s, i) => s + i.quantity, 0); }
     function totalPrice() { return cartItems.reduce((s, i) => s + (parseFloat(i.price) || 0) * i.quantity, 0); }
     function fmt(n) { return n.toFixed(2).replace('.', ',') + ' €'; }
@@ -132,10 +127,8 @@
 
         const count = totalCount();
         const price = totalPrice();
-
         badge.textContent = count > 99 ? '99+' : count;
         badge.classList.toggle('has-items', count > 0);
-
         if (!body) return;
 
         if (cartItems.length === 0) {
@@ -177,8 +170,7 @@
             });
         });
 
-        // Restaurant geschlossen?
-        const isClosed   = configLoaded && !cartConfig.isOpenNow;
+        const isClosed    = configLoaded && !cartConfig.isOpenNow;
         const ordersReady = configLoaded && cartConfig.ordersEnabled && !isClosed &&
                             (cartConfig.dineInEnabled || cartConfig.pickupEnabled || cartConfig.deliveryEnabled);
 
@@ -211,8 +203,8 @@
         }
 
         const modes = [];
-        if (cartConfig.dineInEnabled)   modes.push({ key: 'dine_in',  label: '🍽️ Am Tisch',  icon: '🍽️' });
-        if (cartConfig.pickupEnabled)   modes.push({ key: 'pickup',   label: '🚗 Abholung',  icon: '🚗' });
+        if (cartConfig.dineInEnabled)   modes.push({ key: 'dine_in',  label: '🍽️ Am Tisch', icon: '🍽️' });
+        if (cartConfig.pickupEnabled)   modes.push({ key: 'pickup',   label: '🚗 Abholung', icon: '🚗' });
         if (cartConfig.deliveryEnabled) modes.push({ key: 'delivery', label: '🚚 Lieferung', icon: '🚚' });
 
         const modal = document.createElement('div');
@@ -259,6 +251,9 @@
     function renderCheckoutForm(mode) {
         const form = document.getElementById('opa-checkout-form');
         if (!form) return;
+        // Früheste Abholzeit aus Server-Config (verhindert Vergangenheitswahl im Browser)
+        const minTime = cartConfig.minPickupTime || '';
+
         if (mode === 'dine_in') {
             form.innerHTML = `
                 <label class="opa-form-label">Tischnummer *
@@ -279,7 +274,7 @@
                     <input class="opa-form-input" type="tel" id="co-phone" placeholder="+49 …" required>
                 </label>
                 <label class="opa-form-label">Gewünschte Abholzeit *
-                    <input class="opa-form-input" type="time" id="co-time" required>
+                    <input class="opa-form-input" type="time" id="co-time" min="${escHtml(minTime)}" required>
                 </label>
                 <label class="opa-form-label">Anmerkung (optional)
                     <textarea class="opa-form-input" id="co-note" rows="2" placeholder="Sonderwunsch, Allergie…"></textarea>
@@ -302,7 +297,7 @@
     }
 
     async function submitOrder(mode) {
-        const msg = document.getElementById('opa-checkout-msg');
+        const msg       = document.getElementById('opa-checkout-msg');
         const submitBtn = document.getElementById('opa-checkout-submit');
         if (!mode) { showMsg(msg, 'error', 'Bitte wähle einen Bestellmodus.'); return; }
 
@@ -326,6 +321,11 @@
             if (!name)  { showMsg(msg, 'error', 'Bitte Name angeben.'); return; }
             if (!phone) { showMsg(msg, 'error', 'Bitte Telefonnummer für Rückfragen angeben.'); return; }
             if (!time)  { showMsg(msg, 'error', 'Bitte Abholzeit angeben.'); return; }
+            // Client-seitiger Vorab-Check (zusätzlich zur Servervalidierung)
+            if (cartConfig.minPickupTime && time < cartConfig.minPickupTime) {
+                showMsg(msg, 'error', `Abholzeit zu früh. Früheste mögliche Zeit: ${cartConfig.minPickupTime} Uhr.`);
+                return;
+            }
             payload.phone      = phone;
             payload.pickupTime = time;
             payload.guestNote  = (name ? `Name: ${name}\n` : '') + (document.getElementById('co-note')?.value.trim() || '');
@@ -372,13 +372,13 @@
     // Add-Buttons + Kachel-Klick injizieren
     // =========================================================================
     function injectAddButtons() {
-        const mode = window.OPA_CART_CLICK_MODE || 'tile';
+        const mode    = window.OPA_CART_CLICK_MODE || 'tile';
         const showBtn  = (mode === 'button' || mode === 'both');
         const showTile = (mode === 'tile'   || mode === 'both');
 
         document.querySelectorAll('[data-menu-item]').forEach(card => {
             const id    = card.dataset.menuItem;
-            const name  = card.dataset.itemName  || card.querySelector('[data-item-name]')?.textContent || 'Artikel';
+            const name  = card.dataset.itemName || card.querySelector('[data-item-name]')?.textContent || 'Artikel';
             const price = card.dataset.itemPrice || '0';
 
             if (showBtn && !card.querySelector('.opa-add-to-cart')) {
@@ -386,10 +386,7 @@
                 btn.className = 'opa-add-to-cart';
                 btn.setAttribute('aria-label', `${name} in den Warenkorb`);
                 btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
-                btn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    addItem({ id, name, price });
-                });
+                btn.addEventListener('click', (e) => { e.stopPropagation(); addItem({ id, name, price }); });
                 card.appendChild(btn);
             }
 
@@ -407,7 +404,6 @@
     }
 
     window._opaInjectAddButtons = injectAddButtons;
-
     const observer = new MutationObserver(() => injectAddButtons());
 
     function animateBadge() {
@@ -423,19 +419,12 @@
     }
 
     function init() {
-        loadCart();
-        buildCartDOM();
-        render();
-        loadConfig();
-        injectAddButtons();
+        loadCart(); buildCartDOM(); render(); loadConfig(); injectAddButtons();
         observer.observe(document.body, { childList: true, subtree: true });
     }
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
-    } else {
-        init();
-    }
+    if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', init); }
+    else { init(); }
 
     window.OpaCart = { addItem, removeItem, clearCart, totalCount, totalPrice, open: openDrawer, close: closeDrawer };
 }());
