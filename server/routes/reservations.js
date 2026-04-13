@@ -1,5 +1,8 @@
 /**
  * Routes – Reservations
+ *
+ * SECURITY:
+ *  - BUG-04: Timing-sicherer Token-Vergleich via crypto.timingSafeEqual()
  */
 const router = require('express').Router();
 const crypto = require('crypto');
@@ -7,6 +10,26 @@ const DB = require('../database.js');
 const Mailer = require('../mailer.js');
 const { reservationLimiter } = require('../middleware.js');
 const { sanitizeText, calculateDuration, buildEndTime, findAvailableTables, tokenResponsePage } = require('../helpers.js');
+
+/**
+ * Timing-sicherer Token-Vergleich.
+ * Verhindert Timing-Angriffe die ermöglichen würden gültige Tokens zu erraten.
+ */
+function findReservationByToken(reservations, token) {
+    if (!token || typeof token !== 'string') return null;
+    const tokenBuf = Buffer.from(token);
+    return (reservations || []).find(x => {
+        if (!x.token || typeof x.token !== 'string') return false;
+        try {
+            const xBuf = Buffer.from(x.token);
+            // Längen müssen identisch sein für timingSafeEqual
+            if (xBuf.length !== tokenBuf.length) return false;
+            return crypto.timingSafeEqual(xBuf, tokenBuf);
+        } catch {
+            return false;
+        }
+    }) || null;
+}
 
 module.exports = (requireAuth, requireLicense) => {
     router.get('/', requireAuth, async (req, res) => {
@@ -110,7 +133,7 @@ module.exports = (requireAuth, requireLicense) => {
     router.get('/cancel/:token', async (req, res) => {
         try {
             const reservations = await DB.getReservations();
-            const r = (reservations || []).find(x => x.token === req.params.token);
+            const r = findReservationByToken(reservations, req.params.token);
             if (!r) return res.status(404).send(tokenResponsePage(DB, 'Link ungültig', 'Dieser Link ist ungültig oder bereits abgelaufen.', '#e53e3e', '❌'));
             if (r.status === 'Cancelled') return res.send(tokenResponsePage(DB, 'Bereits storniert', 'Diese Reservierung wurde bereits storniert.', '#718096', 'ℹ️'));
             const updated = await DB.updateReservation(r.id, { status: 'Cancelled' });
@@ -122,7 +145,7 @@ module.exports = (requireAuth, requireLicense) => {
     router.get('/confirm/:token', async (req, res) => {
         try {
             const reservations = await DB.getReservations();
-            const r = (reservations || []).find(x => x.token === req.params.token);
+            const r = findReservationByToken(reservations, req.params.token);
             if (!r) return res.status(404).send(tokenResponsePage(DB, 'Link ungültig', 'Dieser Link ist ungültig oder bereits abgelaufen.', '#e53e3e', '❌'));
             if (r.status === 'Confirmed') return res.send(tokenResponsePage(DB, 'Bereits bestätigt', `Ihre Reservierung für den <strong>${r.date}</strong> um <strong>${r.start_time} Uhr</strong> ist bereits bestätigt. Wir freuen uns auf Ihren Besuch!`, '#38a169', '✅'));
             const updated = await DB.updateReservation(r.id, { status: 'Confirmed' });
@@ -134,7 +157,7 @@ module.exports = (requireAuth, requireLicense) => {
     router.post('/cancel/:token', reservationLimiter, async (req, res) => {
         try {
             const reservations = await DB.getReservations();
-            const r = (reservations || []).find(x => x.token === req.params.token);
+            const r = findReservationByToken(reservations, req.params.token);
             if (!r) return res.status(404).json({ success: false, reason: 'Ungültiger Token.' });
             if (r.status === 'Cancelled') return res.json({ success: true, alreadyCancelled: true });
             const updated = await DB.updateReservation(r.id, { status: 'Cancelled' });
@@ -146,7 +169,7 @@ module.exports = (requireAuth, requireLicense) => {
     router.post('/confirm/:token', reservationLimiter, async (req, res) => {
         try {
             const reservations = await DB.getReservations();
-            const r = (reservations || []).find(x => x.token === req.params.token);
+            const r = findReservationByToken(reservations, req.params.token);
             if (!r) return res.status(404).json({ success: false, reason: 'Ungültiger Token.' });
             if (r.status === 'Confirmed') return res.json({ success: true, alreadyConfirmed: true });
             const updated = await DB.updateReservation(r.id, { status: 'Confirmed' });
