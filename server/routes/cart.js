@@ -19,38 +19,32 @@ const MAX_QTY_PER_ITEM       = 99;
 const DEFAULT_CUTOFF_MINUTES = 30;
 const DEFAULT_LEAD_MINUTES   = 5;
 
-/** Liest orderConfig aus den Settings (synchron via getKV). */
-function getOrderConfig() {
-    try {
-        const settings = DB.getKV('settings', {});
-        return settings.orderConfig || {};
-    } catch (_) { return {}; }
-}
-
 /** Konfigurierbare Cutoff-Minuten (Bestellstopp vor Ladenschluss). */
 function getCutoffMinutes(cfg) {
-    const v = parseInt((cfg || getOrderConfig()).orderCutoffMinutes, 10);
+    const v = parseInt((cfg || {}).orderCutoffMinutes, 10);
     return (isNaN(v) || v < 0) ? DEFAULT_CUTOFF_MINUTES : v;
 }
 
 /** Konfigurierbare Mindest-Vorlaufzeit für Abholungen. */
 function getLeadMinutes(cfg) {
-    const v = parseInt((cfg || getOrderConfig()).pickupLeadMinutes, 10);
+    const v = parseInt((cfg || {}).pickupLeadMinutes, 10);
     return (isNaN(v) || v < 0) ? DEFAULT_LEAD_MINUTES : v;
 }
 
 /**
  * Prüft ob das Restaurant zum aktuellen Zeitpunkt bestellt werden kann.
+ * async – unterstützt sowohl SQLite (sync) als auch MySQL (async) Adapter.
  * Rückgabe: { open, reason?, openMin?, closeMin?, openStr?, closeStr?, cutoff, lead }
  */
-function checkOpeningHours() {
-    const cfg      = getOrderConfig();
-    const cutoff   = getCutoffMinutes(cfg);
-    const lead     = getLeadMinutes(cfg);
-    const homepage = DB.getKV('homepage', {});
-    const oh       = homepage.openingHours || {};
-    const now      = new Date();
-    const dayKey   = ['So','Mo','Di','Mi','Do','Fr','Sa'][now.getDay()];
+async function checkOpeningHours() {
+    const settings  = await DB.getKV('settings', {});
+    const cfg       = (settings && settings.orderConfig) ? settings.orderConfig : {};
+    const cutoff    = getCutoffMinutes(cfg);
+    const lead      = getLeadMinutes(cfg);
+    const homepage  = await DB.getKV('homepage', {});
+    const oh        = (homepage && homepage.openingHours) ? homepage.openingHours : {};
+    const now       = new Date();
+    const dayKey    = ['So','Mo','Di','Mi','Do','Fr','Sa'][now.getDay()];
     const dayConfig = oh[dayKey];
 
     if (!dayConfig) return { open: true, openMin: null, closeMin: null, cutoff, lead };
@@ -151,8 +145,8 @@ module.exports = function cartRoutes(requireLicense, io) {
             const settings = await DB.getKV('settings', {});
 
             const onlineOrdersEnabled = !!(license.modules && license.modules.online_orders);
-            const orderConfig = settings.orderConfig || {};
-            const openStatus  = checkOpeningHours();
+            const orderConfig = (settings && settings.orderConfig) ? settings.orderConfig : {};
+            const openStatus  = await checkOpeningHours();
 
             const now      = new Date();
             const lead     = openStatus.lead;
@@ -192,7 +186,7 @@ module.exports = function cartRoutes(requireLicense, io) {
         try {
             const { type, items, phone, tableNumber, pickupTime, delivery, guestNote } = req.body;
 
-            const openStatus = checkOpeningHours();
+            const openStatus = await checkOpeningHours();
             if (!openStatus.open) {
                 return res.status(403).json({ success: false, reason: openStatus.reason });
             }
@@ -220,7 +214,7 @@ module.exports = function cartRoutes(requireLicense, io) {
             }
 
             const settings    = await DB.getKV('settings', {});
-            const orderConfig = settings.orderConfig || {};
+            const orderConfig = (settings && settings.orderConfig) ? settings.orderConfig : {};
             if (!orderConfig.ordersEnabled)                        return res.status(403).json({ success: false, reason: 'Bestellsystem ist derzeit deaktiviert.' });
             if (type === 'delivery' && !orderConfig.deliveryEnabled) return res.status(403).json({ success: false, reason: 'Lieferung ist derzeit deaktiviert.' });
             if (type === 'pickup'   && !orderConfig.pickupEnabled)   return res.status(403).json({ success: false, reason: 'Abholung ist derzeit deaktiviert.' });
