@@ -22,30 +22,64 @@ if (process.env.LICENSE_PUBLIC_KEY) {
     console.warn('\u26a0\ufe0f   RSA Public Key: Fallback-Key aktiv. F\u00fcr Produktion LICENSE_PUBLIC_KEY in .env setzen.');
 }
 
+/**
+ * PLAN_DEFINITIONS
+ *
+ * Modul-Übersicht:
+ *  menu_edit      – Speisekarte bearbeiten (alle Pläne)
+ *  orders_kitchen – Küchen-Monitor: eingehende Bestellungen im CMS sehen
+ *  reservations   – Online-Reservierung durch Gäste
+ *  custom_design  – Design/Homepage anpassen
+ *  analytics      – Statistiken & Umsatzauswertungen
+ *  qr_pay         – Bezahlung per QR-Code am Tisch
+ *  online_orders  – Gäste können Bestellungen ÜBERMITTELN (Tisch/Abholung/Lieferung)
+ *                   Warenkorb (Planungshelfer ohne Übermittlung) ist IMMER frei –
+ *                   dieses Modul steuert nur den echten Checkout.
+ */
 const PLAN_DEFINITIONS = {
     FREE: {
         label: 'Free', menu_items: 30, max_tables: 5,
-        modules: { menu_edit: true, orders_kitchen: false, reservations: false, custom_design: false, analytics: false, qr_pay: false },
+        modules: {
+            menu_edit: true, orders_kitchen: false, reservations: false,
+            custom_design: false, analytics: false, qr_pay: false,
+            online_orders: false
+        },
         note: 'Kostenlos zum Testen'
     },
     STARTER: {
         label: 'Starter', menu_items: 60, max_tables: 10,
-        modules: { menu_edit: true, orders_kitchen: true, reservations: true, custom_design: false, analytics: false, qr_pay: false },
+        modules: {
+            menu_edit: true, orders_kitchen: true, reservations: true,
+            custom_design: false, analytics: false, qr_pay: false,
+            online_orders: false
+        },
         note: 'F\u00fcr kleine Caf\u00e9s & Imbi\u00dfe'
     },
     PRO: {
         label: 'Pro', menu_items: 150, max_tables: 25,
-        modules: { menu_edit: true, orders_kitchen: true, reservations: true, custom_design: true, analytics: false, qr_pay: false },
+        modules: {
+            menu_edit: true, orders_kitchen: true, reservations: true,
+            custom_design: true, analytics: false, qr_pay: false,
+            online_orders: false
+        },
         note: 'F\u00fcr Restaurants'
     },
     PRO_PLUS: {
         label: 'Pro+', menu_items: 300, max_tables: 50,
-        modules: { menu_edit: true, orders_kitchen: true, reservations: true, custom_design: true, analytics: true, qr_pay: false },
+        modules: {
+            menu_edit: true, orders_kitchen: true, reservations: true,
+            custom_design: true, analytics: true, qr_pay: false,
+            online_orders: true
+        },
         note: 'F\u00fcr gro\u00dfe Restaurants'
     },
     ENTERPRISE: {
         label: 'Enterprise', menu_items: 999, max_tables: 999,
-        modules: { menu_edit: true, orders_kitchen: true, reservations: true, custom_design: true, analytics: true, qr_pay: true },
+        modules: {
+            menu_edit: true, orders_kitchen: true, reservations: true,
+            custom_design: true, analytics: true, qr_pay: true,
+            online_orders: true
+        },
         note: 'F\u00fcr Ketten & Hotels'
     }
 };
@@ -93,16 +127,13 @@ const verifyLicenseToken = (token, host = null) => {
 
 /**
  * Offline-Fallback: Liest den letzten bekannten Plan aus der DB.
- * Wird genutzt wenn der Lizenzserver nicht erreichbar ist (degraded: 'unreachable').
- * Gibt null zurück wenn kein Snapshot vorhanden.
  */
 const getLastKnownLicense = (lic) => {
     if (!lic || !lic.key) return null;
-    // Snapshot vom letzten erfolgreichen Check vorhanden?
     const type = lic.lastKnownType || lic.type || null;
     if (!type || type === 'FREE') return null;
 
-    const plan = getPlan(type);
+    const plan    = getPlan(type);
     const modules = lic.lastKnownModules || plan.modules;
     const limits  = lic.lastKnownLimits  || { max_dishes: plan.menu_items, max_tables: plan.max_tables };
 
@@ -125,11 +156,7 @@ const getLastKnownLicense = (lic) => {
 
 /**
  * Gibt die aktuelle, verifizierte Lizenz zurück.
- * Fallback-Kette bei ungültigem Token:
- *  1. Verifiziertes JWT (Normalfall)
- *  2. Offline-Fallback: letzter bekannter Plan aus DB-Snapshot
- *  3. JWT dekodieren ohne Signaturprüfung (Domain-Mismatch / abgelaufen)
- *  4. FREE (kein Lizenz-Key vorhanden)
+ * Fallback-Kette: JWT → Offline-Snapshot → Decode ohne Sig → FREE
  */
 const getCurrentLicense = async (DB, host = null) => {
     const settings = await DB.getKV('settings', {});
@@ -162,7 +189,6 @@ const getCurrentLicense = async (DB, host = null) => {
     const payload = verifyLicenseToken(token, host);
 
     if (payload) {
-        // Normalfall: Token ist gültig und verifiziert
         const plan      = getPlan(payload.type);
         const now       = new Date();
         const expiresAt = payload.exp ? new Date(payload.exp * 1000) : null;
@@ -170,7 +196,6 @@ const getCurrentLicense = async (DB, host = null) => {
 
         if (isExpired) {
             console.warn(`\u26a0\ufe0f  License token expired at ${expiresAt?.toISOString()}`);
-            // Auch bei abgelaufenem Token: Fallback auf letzten bekannten Plan
             const offline = getLastKnownLicense(lic);
             if (offline) return offline;
             return FREE_RESULT({ isExpired: true, status: 'expired', key: payload.license_key || lic.key });
@@ -193,13 +218,11 @@ const getCurrentLicense = async (DB, host = null) => {
         };
     }
 
-    // --- Kein gültiges Token: Fallback-Kette ---
+    // --- Fallback-Kette ---
     if (lic.key) {
-        // Fallback 1: Offline-Fallback mit letztem bekannten Plan
         const offline = getLastKnownLicense(lic);
         if (offline) return offline;
 
-        // Fallback 2: Token dekodieren ohne Signaturprüfung
         if (token) {
             try {
                 const decoded = jwt.decode(token);
@@ -207,7 +230,6 @@ const getCurrentLicense = async (DB, host = null) => {
                     const plan = getPlan(decoded.type);
                     const now  = new Date();
                     const expiresAt = decoded.exp ? new Date(decoded.exp * 1000) : null;
-                    // Nur nutzen wenn nicht länger als 7 Tage abgelaufen (Toleranz)
                     const tooOld = expiresAt ? (now - expiresAt) > (7 * 24 * 60 * 60 * 1000) : false;
                     if (!tooOld) {
                         console.warn(`\u26a0\ufe0f  [Decode-Fallback] Token nicht verifizierbar – nutze dekodiertes Token (Plan: ${decoded.type})`);
