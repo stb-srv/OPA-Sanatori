@@ -9,6 +9,7 @@
     <meta name="description" content="Authentische griechische Küche im Herzen Münchens. Frische Zutaten, traditionelle Rezepte, modernes Ambiente.">
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="cookie-banner.css">
+    <link rel="stylesheet" href="cart.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
@@ -217,7 +218,6 @@
     </footer>
 
     <!-- GDPR COOKIE BANNER -->
-    <!-- Trigger-Button: immer im DOM, Sichtbarkeit via JS gesteuert -->
     <div id="cookie-settings-trigger" class="cookie-trigger" style="display:none;"
          onclick="window.OPAConsent && window.OPAConsent.showPreferences()"
          title="Cookie-Einstellungen"
@@ -254,7 +254,6 @@
                     <i class="fas fa-sliders-h"></i>
                     <h2>Cookie-Einstellungen</h2>
                 </div>
-                <!-- Dynamisch befüllt durch cookie-consent.js anhand Server-Config -->
                 <div class="cookie-categories" id="cookie-categories-dynamic"></div>
                 <div class="cookie-actions">
                     <button class="btn small" onclick="window.saveCustomCookies()">Auswahl speichern</button>
@@ -273,5 +272,7 @@
     <script src="app.js"></script>
     <!-- Cookie Consent Manager – nach app.js laden -->
     <script src="cookie-consent.js"></script>
+    <!-- Warenkorb / Online-Bestellungen -->
+    <script src="cart.js" defer></script>
 </body>
 </html>

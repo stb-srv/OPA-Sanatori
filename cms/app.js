@@ -14,6 +14,7 @@ import { renderDesigner } from './modules/designer.js';
 import { renderSettings } from './modules/settings.js';
 import { renderOpeningHours } from './modules/opening.js';
 import { renderOrders } from './modules/orders.js';
+import { initOrderSettings } from './modules/order-settings.js';
 
 const loginContainer    = document.getElementById('login-container');
 const adminDashboard    = document.getElementById('admin-dashboard');
@@ -170,6 +171,15 @@ async function switchView(view, tab = null) {
             break;
         case 'orders':
             await renderOrders(contentView, viewTitle);
+            break;
+        case 'order-settings':
+            viewTitle.innerHTML = '<i class="fas fa-shopping-bag"></i> Bestellungen';
+            contentView.innerHTML = '<div id="order-settings-root"></div>';
+            await initOrderSettings(
+                document.getElementById('order-settings-root'),
+                { get: (path) => apiGet(path), post: (path, body) => import('./modules/api.js').then(m => m.apiPost(path, body)) },
+                await apiGet('license/info')
+            );
             break;
         case 'plugins-manager':
             contentView.innerHTML = `
