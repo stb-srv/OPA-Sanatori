@@ -22,17 +22,20 @@ function extractDomain(req) {
 
 /**
  * Gibt das Speisenlimit zuverlässig zurück.
- * Wenn ein License-Key in der DB vorhanden ist (aber Token gerade nicht verifizierbar),
- * wird das Limit aus dem gespeicherten Token-Payload (jwt.decode ohne Signaturprüfung)
- * oder aus den DB-Feldern gelesen – statt auf FREE (30) zurückzufallen.
+ * Fix: verified kann null/undefined sein – NullPointer-Crash verhindert.
  */
 const jwt = require('jsonwebtoken');
 async function getMaxDishes(DB, domain) {
-    const settings = await DB.getKV('settings', {});
-    const lic      = settings.license || {};
+    // DB.getKV ist synchron – kein await nötig
+    const settings = DB.getKV('settings', {});
+    const lic      = (settings && settings.license) ? settings.license : {};
 
     // 1. Verifiziertes Token (Normalfall)
-    const verified = await getCurrentLicense(DB, domain);
+    let verified = null;
+    try {
+        verified = await getCurrentLicense(DB, domain);
+    } catch (_) { /* getCurrentLicense kann werfen */ }
+
     if (verified && verified.status === 'active') {
         return verified.limits?.max_dishes ?? 999;
     }
@@ -54,8 +57,8 @@ async function getMaxDishes(DB, domain) {
         return 9999;
     }
 
-    // 4. Trial oder keine Lizenz – Plan-Limit
-    return verified.limits?.max_dishes ?? 30;
+    // 4. Trial oder keine Lizenz – Plan-Limit (verified kann null sein!)
+    return verified?.limits?.max_dishes ?? 30;
 }
 
 module.exports = (requireAuth, requireLicense) => {
@@ -68,13 +71,14 @@ module.exports = (requireAuth, requireLicense) => {
     router.post('/menu', requireAuth, requireLicense('menu_edit'), async (req, res) => {
         try {
             const domain = extractDomain(req);
-            const lic = await getCurrentLicense(DB, domain);
-            const maxDishes = lic.limits?.max_dishes ?? 10;
+            let lic = null;
+            try { lic = await getCurrentLicense(DB, domain); } catch (_) {}
+            const maxDishes = lic?.limits?.max_dishes ?? 30;
             const menu = await DB.getMenu();
             if (menu.length >= maxDishes)
-                return res.status(403).json({ success: false, reason: `Ihr ${lic.label || lic.type}-Plan erlaubt maximal ${maxDishes} Speisen.` });
+                return res.status(403).json({ success: false, reason: `Ihr ${lic?.label || lic?.type || 'Free'}-Plan erlaubt maximal ${maxDishes} Speisen.` });
             const m = req.body;
-            // Fix: Kompatibilitäts-Mapping falls Frontend 'nr' statt 'number' sendet
+            // Kompatibilitäts-Mapping falls Frontend 'nr' statt 'number' sendet
             if (typeof m.number === 'undefined' && typeof m.nr !== 'undefined') m.number = m.nr;
             m.id = m.id || Date.now().toString();
             await DB.addMenu(m);
@@ -85,7 +89,7 @@ module.exports = (requireAuth, requireLicense) => {
     router.put('/menu/:id', requireAuth, requireLicense('menu_edit'), async (req, res) => {
         try {
             const body = req.body;
-            // Fix: Kompatibilitäts-Mapping falls Frontend 'nr' statt 'number' sendet
+            // Kompatibilitäts-Mapping falls Frontend 'nr' statt 'number' sendet
             if (typeof body.number === 'undefined' && typeof body.nr !== 'undefined') body.number = body.nr;
             const updated = await DB.updateMenu(req.params.id, body);
             if (!updated) return res.status(404).json({ success: false, reason: 'Gericht nicht gefunden.' });
@@ -163,7 +167,10 @@ module.exports = (requireAuth, requireLicense) => {
             if (allergens && typeof allergens === 'object') await DB.setKV('allergens', allergens);
             if (additives && typeof additives === 'object') await DB.setKV('additives', additives);
             res.json({ success: true });
-        } catch(e) { res.status(500).json({ success: false, reason: e.message }); }
+        } catch(e) {
+            console.error('[menu/import] Fehler:', e.message);
+            res.status(500).json({ success: false, reason: e.message });
+        }
     });
 
     return router;
