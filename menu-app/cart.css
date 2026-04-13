@@ -212,27 +212,6 @@
 .opa-cart-btn-clear:hover { opacity: 1; }
 .opa-cart-hint { font-size: .8rem; opacity: .5; text-align: center; margin-top: 8px; }
 
-/* + Button auf Kacheln */
-.opa-add-to-cart {
-    position: absolute;
-    bottom: 12px;
-    right: 12px;
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    border: none;
-    background: var(--primary, #1B3A5C);
-    color: #fff;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 2px 8px rgba(0,0,0,.2);
-    transition: transform .15s, box-shadow .15s;
-    z-index: 2;
-}
-.opa-add-to-cart:hover { transform: scale(1.15); box-shadow: 0 4px 12px rgba(0,0,0,.25); }
-
 /* Kachel klickbar (Modus tile / both) */
 .dish-card--clickable {
     cursor: pointer;
