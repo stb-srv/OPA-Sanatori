@@ -10,7 +10,6 @@ let designerTab = 'visuals';
 export async function renderDesigner(container, titleEl, initialTab = null) {
     if (initialTab) designerTab = initialTab;
     
-    // Set Title based on Tab
     const tabTitles = {
         visuals: 'Design & Bilder',
         location: 'Standort & Karte',
@@ -18,28 +17,99 @@ export async function renderDesigner(container, titleEl, initialTab = null) {
         vacation: 'Urlaub',
         holiday: 'Feiertage',
         legal: 'Impressum & Datenschutz',
-        cookies: 'Cookie Banner'
+        cookies: 'Cookie Banner',
+        consent_log: 'Consent-Log'
     };
     
     titleEl.innerHTML = `<div style="display:flex;align-items:center;">${tabTitles[designerTab] || 'Website Designer'} ${renderHelpIcon(designerTab)}</div>`;
     const home = await apiGet('homepage') || {};
 
+    // Cookie-Tabs brauchen eigene Daten
+    let cookieConfig = null;
+    let consentLog = null;
+    if (designerTab === 'cookies') {
+        cookieConfig = await _fetchCookieConfig();
+    }
+    if (designerTab === 'consent_log') {
+        consentLog = await _fetchConsentLog();
+    }
+
+    const isCookieTab = designerTab === 'cookies' || designerTab === 'consent_log';
+
     container.innerHTML = `
         <div class="glass-panel" style="padding:40px;">
             <div id="designer-content">
-                ${renderDesignerTab(home)}
+                ${renderDesignerTab(home, cookieConfig, consentLog)}
             </div>
             
-            <div style="display:flex; justify-content:flex-end; margin-top:30px;">
-                <button class="btn-primary" id="save-designer"><i class="fas fa-save"></i> Änderungen speichern</button>
+            <div style="display:flex; justify-content:flex-end; margin-top:30px;" id="save-bar-wrap">
+                ${isCookieTab ? '' : '<button class="btn-primary" id="save-designer"><i class="fas fa-save"></i> Änderungen speichern</button>'}
             </div>
         </div>
     `;
 
-    attachDesignerHandlers(container, home, titleEl);
+    attachDesignerHandlers(container, home, titleEl, cookieConfig);
 }
 
-function renderDesignerTab(home) {
+// ── Cookie-Config vom Admin-Endpoint holen ──────────────────────────────────
+async function _fetchCookieConfig() {
+    try {
+        const token = sessionStorage.getItem('opa_admin_token');
+        const res = await fetch('/api/cookie-config/admin', {
+            headers: { 'x-admin-token': token }
+        });
+        if (!res.ok) return null;
+        return await res.json();
+    } catch { return null; }
+}
+
+async function _saveCookieConfig(config) {
+    try {
+        const token = sessionStorage.getItem('opa_admin_token');
+        const res = await fetch('/api/cookie-config/admin', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-admin-token': token },
+            body: JSON.stringify(config)
+        });
+        return await res.json();
+    } catch (e) { return { success: false, reason: e.message }; }
+}
+
+async function _fetchConsentLog(page = 1) {
+    try {
+        const token = sessionStorage.getItem('opa_admin_token');
+        const res = await fetch(`/api/cookie-consent/log?page=${page}&limit=50`, {
+            headers: { 'x-admin-token': token }
+        });
+        if (!res.ok) return null;
+        return await res.json();
+    } catch { return null; }
+}
+
+async function _triggerRecons() {
+    try {
+        const token = sessionStorage.getItem('opa_admin_token');
+        const res = await fetch('/api/cookie-consent/recons', {
+            method: 'POST',
+            headers: { 'x-admin-token': token }
+        });
+        return await res.json();
+    } catch (e) { return { success: false, reason: e.message }; }
+}
+
+async function _clearConsentLog() {
+    try {
+        const token = sessionStorage.getItem('opa_admin_token');
+        const res = await fetch('/api/cookie-consent/log', {
+            method: 'DELETE',
+            headers: { 'x-admin-token': token }
+        });
+        return await res.json();
+    } catch (e) { return { success: false, reason: e.message }; }
+}
+
+// ── Tab-Renderer ────────────────────────────────────────────────────────────
+function renderDesignerTab(home, cookieConfig = null, consentLog = null) {
     switch (designerTab) {
         case 'visuals':
             return `
@@ -140,28 +210,283 @@ function renderDesignerTab(home) {
             `;
 
         case 'cookies':
-            const coo = home.cookieBanner || { enabled: true };
-            return `
-                <div class="form-grid">
-                    <div class="form-group full">
-                        <label class="switch-label">
-                            <label class="switch small"><input type="checkbox" id="ds-c-on" ${coo.enabled ? 'checked' : ''}><span class="slider round"></span></label>
-                            Cookie Banner auf Website anzeigen
-                        </label>
-                    </div>
-                    <div class="form-group full"><label>Überschrift</label><input id="ds-c-title" class="input-styled" value="${coo.title || 'Cookie-Einstellungen'}"></div>
-                    <div class="form-group full"><label>Cookie Nachricht</label><textarea id="ds-c-text" class="input-styled" style="height:100px;">${coo.text || 'Wir verwenden Cookies um...'}</textarea></div>
-                </div>
-            `;
+            return _renderCookiesTab(cookieConfig);
+
+        case 'consent_log':
+            return _renderConsentLogTab(consentLog);
 
         default: return '<p>Sektion nicht gefunden.</p>';
     }
 }
 
-function attachDesignerHandlers(container, home, titleEl) {
+// ── Cookie-Banner DSGVO-Tab ─────────────────────────────────────────────────
+function _renderCookiesTab(cfg) {
+    if (!cfg) {
+        return `<div style="text-align:center; padding:60px; opacity:.5;">
+            <i class="fas fa-exclamation-circle" style="font-size:2rem; margin-bottom:12px; display:block;"></i>
+            Cookie-Konfiguration konnte nicht geladen werden.
+        </div>`;
+    }
+
+    const cats = cfg.categories || {};
+    const catIcons = {
+        necessary: 'shield-alt',
+        functional: 'cogs',
+        analytics: 'chart-bar',
+        marketing: 'bullhorn'
+    };
+    const catColors = {
+        necessary: '#10b981',
+        functional: '#3b82f6',
+        analytics: '#f59e0b',
+        marketing: '#8b5cf6'
+    };
+
+    const categoriesHtml = Object.entries(cats).map(([id, cat]) => {
+        const icon = catIcons[id] || 'cookie-bite';
+        const color = catColors[id] || '#6b7280';
+        const isRequired = cat.required === true;
+        const isEnabled = cat.enabled !== false;
+        const cookieRows = (cat.cookies || []).map(c => `
+            <tr style="font-size:.78rem; color:var(--text-muted);">
+                <td style="padding:4px 8px;"><code>${c.name || '–'}</code></td>
+                <td style="padding:4px 8px;">${c.purpose || '–'}</td>
+                <td style="padding:4px 8px;">${c.duration || '–'}</td>
+                <td style="padding:4px 8px;">${c.provider || '–'}</td>
+            </tr>
+        `).join('');
+
+        return `
+        <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:20px; margin-bottom:14px;" data-cat-id="${id}">
+            <div style="display:flex; align-items:center; gap:14px;">
+                <div style="width:40px;height:40px;border-radius:10px;background:${color}22;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <i class="fas fa-${icon}" style="color:${color};"></i>
+                </div>
+                <div style="flex:1; min-width:0;">
+                    <div style="font-weight:700; font-size:.95rem; display:flex; align-items:center; gap:8px;">
+                        ${cat.label || id}
+                        ${isRequired ? '<span style="background:rgba(16,185,129,.15);color:#10b981;border-radius:20px;padding:1px 8px;font-size:.7rem;">Pflicht</span>' : ''}
+                    </div>
+                    <div style="color:var(--text-muted); font-size:.8rem; margin-top:2px;">${cat.description || ''}</div>
+                </div>
+                <label class="switch small" style="flex-shrink:0;">
+                    <input type="checkbox" class="cat-toggle" data-cat="${id}"
+                        ${isEnabled ? 'checked' : ''}
+                        ${isRequired ? 'disabled' : ''}>
+                    <span class="slider round"></span>
+                </label>
+            </div>
+            ${cookieRows ? `
+            <div style="margin-top:14px; border-top:1px solid rgba(255,255,255,0.06); padding-top:10px;">
+                <table style="width:100%; border-collapse:collapse;">
+                    <thead><tr style="font-size:.72rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted);">
+                        <th style="padding:4px 8px; text-align:left; font-weight:600;">Cookie</th>
+                        <th style="padding:4px 8px; text-align:left; font-weight:600;">Zweck</th>
+                        <th style="padding:4px 8px; text-align:left; font-weight:600;">Dauer</th>
+                        <th style="padding:4px 8px; text-align:left; font-weight:600;">Anbieter</th>
+                    </tr></thead>
+                    <tbody>${cookieRows}</tbody>
+                </table>
+            </div>` : ''}
+        </div>`;
+    }).join('');
+
+    return `
+        <!-- Globaler Banner-Toggle -->
+        <div style="background:rgba(37,99,235,.06); border:1px solid rgba(37,99,235,.15); border-radius:12px; padding:20px; margin-bottom:24px; display:flex; align-items:center; gap:16px;">
+            <div style="flex:1;">
+                <div style="font-weight:700; font-size:1rem; margin-bottom:3px;">Cookie-Banner anzeigen</div>
+                <div style="color:var(--text-muted); font-size:.83rem;">Wenn deaktiviert, wird auf der Website kein Cookie-Banner eingeblendet.</div>
+            </div>
+            <label class="switch" style="flex-shrink:0;">
+                <input type="checkbox" id="ck-enabled" ${cfg.bannerEnabled !== false ? 'checked' : ''}>
+                <span class="slider round"></span>
+            </label>
+        </div>
+
+        <!-- Banner-Text & Datenschutz-URL -->
+        <div style="display:grid; gap:14px; margin-bottom:24px;">
+            <div class="form-group full">
+                <label>Banner-Text</label>
+                <textarea id="ck-text" class="input-styled" style="height:80px;">${cfg.banner_text || ''}</textarea>
+            </div>
+            <div class="form-group full">
+                <label>Datenschutz-URL</label>
+                <input id="ck-privacy-url" class="input-styled" value="${cfg.privacy_url || '/datenschutz'}" placeholder="/datenschutz">
+            </div>
+        </div>
+
+        <!-- Kategorien -->
+        <h4 style="margin-bottom:14px;"><i class="fas fa-layer-group"></i> Cookie-Kategorien</h4>
+        ${categoriesHtml}
+
+        <!-- Aktions-Buttons -->
+        <div style="display:flex; gap:12px; flex-wrap:wrap; justify-content:flex-end; margin-top:24px; padding-top:20px; border-top:1px solid rgba(255,255,255,0.07);">
+            <button id="btn-recons" class="btn-secondary" title="Erhöht die Config-Version → alle Besucher werden beim nächsten Besuch erneut um Zustimmung gebeten">
+                <i class="fas fa-sync-alt"></i> Re-Consent auslösen
+            </button>
+            <button id="btn-save-cookies" class="btn-primary">
+                <i class="fas fa-save"></i> Cookie-Einstellungen speichern
+            </button>
+        </div>
+
+        <div id="cookie-save-result" style="margin-top:12px;"></div>
+    `;
+}
+
+// ── Consent-Log Tab ─────────────────────────────────────────────────────────
+function _renderConsentLogTab(log) {
+    if (!log) {
+        return `<div style="text-align:center; padding:60px; opacity:.5;">
+            <i class="fas fa-exclamation-circle" style="font-size:2rem; margin-bottom:12px; display:block;"></i>
+            Consent-Log konnte nicht geladen werden.
+        </div>`;
+    }
+
+    const entries = log.entries || [];
+    const rows = entries.map(e => {
+        const choices = Object.entries(e.choices || {})
+            .map(([k, v]) => `<span style="color:${v ? '#10b981' : '#ef4444'}; margin-right:6px; font-size:.75rem;">${k}: ${v ? '✓' : '✗'}</span>`)
+            .join('');
+        return `
+            <tr style="font-size:.82rem; border-bottom:1px solid rgba(255,255,255,0.05);">
+                <td style="padding:8px 10px; color:var(--text-muted);">${new Date(e.timestamp).toLocaleString('de-DE')}</td>
+                <td style="padding:8px 10px;">${choices}</td>
+                <td style="padding:8px 10px; color:var(--text-muted);">${e.source || '–'}</td>
+                <td style="padding:8px 10px; font-family:monospace; font-size:.72rem; color:var(--text-muted);">${e.config_version || '–'}</td>
+            </tr>`;
+    }).join('');
+
+    return `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:10px;">
+            <div>
+                <h4 style="margin:0;">Consent-Protokoll</h4>
+                <p style="color:var(--text-muted); font-size:.83rem; margin:4px 0 0;">
+                    ${log.total || 0} Einträge gesamt &nbsp;·&nbsp; Seite ${log.page || 1}
+                    &nbsp;·&nbsp; DSGVO Art. 7 – Nachweis der Einwilligung
+                </p>
+            </div>
+            <button id="btn-clear-log" class="btn-edit" style="color:#ef4444;" title="Alle Consent-Einträge löschen">
+                <i class="fas fa-trash"></i> Log leeren
+            </button>
+        </div>
+
+        ${entries.length === 0 ? '<p style="text-align:center; opacity:.5; padding:40px;">Noch keine Consent-Einträge vorhanden.</p>' : `
+        <div style="overflow-x:auto;">
+            <table style="width:100%; border-collapse:collapse;">
+                <thead>
+                    <tr style="font-size:.75rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); border-bottom:1px solid rgba(255,255,255,0.1);">
+                        <th style="padding:8px 10px; text-align:left;">Zeitstempel</th>
+                        <th style="padding:8px 10px; text-align:left;">Auswahl</th>
+                        <th style="padding:8px 10px; text-align:left;">Quelle</th>
+                        <th style="padding:8px 10px; text-align:left;">Version</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        </div>`}
+    `;
+}
+
+// ── Handler ─────────────────────────────────────────────────────────────────
+function attachDesignerHandlers(container, home, titleEl, cookieConfig) {
     const f = (id) => container.querySelector(`#${id}`);
 
-    // Pages specific logic
+    // Cookie-Banner-Tab Handlers
+    if (designerTab === 'cookies') {
+        const btnSave = f('btn-save-cookies');
+        const btnRecons = f('btn-recons');
+
+        if (btnSave) {
+            btnSave.onclick = async () => {
+                const resultEl = f('cookie-save-result');
+                const updated = JSON.parse(JSON.stringify(cookieConfig || {}));
+
+                updated.bannerEnabled = f('ck-enabled').checked;
+                updated.banner_text   = f('ck-text').value;
+                updated.privacy_url   = f('ck-privacy-url').value;
+
+                // Kategorien-Toggles einlesen
+                container.querySelectorAll('.cat-toggle').forEach(cb => {
+                    const catId = cb.dataset.cat;
+                    if (updated.categories && updated.categories[catId]) {
+                        updated.categories[catId].enabled = cb.checked;
+                    }
+                });
+
+                btnSave.disabled = true;
+                btnSave.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Wird gespeichert...';
+
+                const res = await _saveCookieConfig(updated);
+
+                btnSave.disabled = false;
+                btnSave.innerHTML = '<i class="fas fa-save"></i> Cookie-Einstellungen speichern';
+
+                if (res && res.success) {
+                    showToast('Cookie-Einstellungen gespeichert!');
+                    if (resultEl) resultEl.innerHTML = `
+                        <div style="padding:10px 14px; background:rgba(16,185,129,.1); border:1px solid rgba(16,185,129,.25); border-radius:8px; color:#10b981; font-size:.85rem;">
+                            <i class="fas fa-check-circle"></i> Gespeichert – Änderungen sind sofort auf der Website aktiv.
+                        </div>`;
+                } else {
+                    showToast(res?.reason || 'Fehler beim Speichern.', 'error');
+                }
+            };
+        }
+
+        if (btnRecons) {
+            btnRecons.onclick = async () => {
+                btnRecons.disabled = true;
+                btnRecons.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                const res = await _triggerRecons();
+                btnRecons.disabled = false;
+                btnRecons.innerHTML = '<i class="fas fa-sync-alt"></i> Re-Consent auslösen';
+                if (res && res.success) {
+                    showToast(`Re-Consent ausgelöst! Neue Version: ${res.new_version}`);
+                } else {
+                    showToast(res?.reason || 'Fehler beim Re-Consent.', 'error');
+                }
+            };
+        }
+    }
+
+    // Consent-Log Handlers
+    if (designerTab === 'consent_log') {
+        const btnClear = f('btn-clear-log');
+        if (btnClear) {
+            btnClear.onclick = async () => {
+                const modal = document.createElement('div');
+                modal.className = 'modal active';
+                modal.innerHTML = `
+                    <div class="modal-content glass-panel" style="max-width:420px; text-align:center; padding:32px;">
+                        <i class="fas fa-trash" style="font-size:2rem; color:#ef4444; margin-bottom:16px; display:block;"></i>
+                        <h4 style="margin-bottom:8px;">Consent-Log leeren?</h4>
+                        <p style="color:var(--text-muted); font-size:.85rem; margin-bottom:24px;">
+                            Alle gespeicherten Einwilligungsnachweise werden unwiderruflich gelöscht.<br>
+                            Dies ist aus DSGVO-Sicht nur erlaubt wenn die Aufbewahrungsfrist abgelaufen ist.
+                        </p>
+                        <div style="display:flex; gap:12px; justify-content:center;">
+                            <button class="btn-secondary" id="cl-cancel">Abbrechen</button>
+                            <button class="btn-primary" id="cl-confirm" style="background:#ef4444;">Ja, Log leeren</button>
+                        </div>
+                    </div>`;
+                document.body.appendChild(modal);
+                modal.querySelector('#cl-cancel').onclick = () => modal.remove();
+                modal.querySelector('#cl-confirm').onclick = async () => {
+                    modal.remove();
+                    const res = await _clearConsentLog();
+                    if (res && res.success) {
+                        showToast('Consent-Log geleert.');
+                        renderDesigner(container, titleEl);
+                    } else {
+                        showToast(res?.reason || 'Fehler beim Leeren.', 'error');
+                    }
+                };
+            };
+        }
+    }
+
+    // Pages Tab
     if (designerTab === 'pages') {
         container.querySelector('#add-custom-page').onclick = () => window.editCustomPage();
         
@@ -209,29 +534,31 @@ function attachDesignerHandlers(container, home, titleEl) {
         };
     }
 
-    container.querySelector('#save-designer').onclick = async () => {
-        const u = { ...home };
-        
-        if (designerTab === 'visuals') {
-            u.heroTitle = f('ds-title').value;
-            u.heroSlogan = f('ds-slogan').value;
-            u.bgImage = f('ds-bg').value;
-            u.welcomeImage = f('ds-w-img').value;
-        } else if (designerTab === 'location') {
-            u.location = { address: f('ds-loc-addr').value, embedUrl: f('ds-loc-map').value };
-        } else if (designerTab === 'vacation') {
-            u.vacation = { enabled: f('ds-v-on').checked, title: f('ds-v-title').value, text: f('ds-v-text').value, start: f('ds-v-start').value, end: f('ds-v-end').value };
-        } else if (designerTab === 'holiday') {
-            u.holiday = { enabled: f('ds-h-on').checked, title: f('ds-h-title').value, text: f('ds-h-text').value, start: f('ds-h-start').value, end: f('ds-h-end').value };
-        } else if (designerTab === 'legal') {
-            u.legal = { impressum: f('ds-leg-imp').value, privacy: f('ds-leg-priv').value };
-        } else if (designerTab === 'cookies') {
-            u.cookieBanner = { enabled: f('ds-c-on').checked, title: f('ds-c-title').value, text: f('ds-c-text').value };
-        }
+    // Standard Speichern (alle Tabs außer cookies/consent_log)
+    const saveBtn = f('save-designer');
+    if (saveBtn) {
+        saveBtn.onclick = async () => {
+            const u = { ...home };
+            
+            if (designerTab === 'visuals') {
+                u.heroTitle = f('ds-title').value;
+                u.heroSlogan = f('ds-slogan').value;
+                u.bgImage = f('ds-bg').value;
+                u.welcomeImage = f('ds-w-img').value;
+            } else if (designerTab === 'location') {
+                u.location = { address: f('ds-loc-addr').value, embedUrl: f('ds-loc-map').value };
+            } else if (designerTab === 'vacation') {
+                u.vacation = { enabled: f('ds-v-on').checked, title: f('ds-v-title').value, text: f('ds-v-text').value, start: f('ds-v-start').value, end: f('ds-v-end').value };
+            } else if (designerTab === 'holiday') {
+                u.holiday = { enabled: f('ds-h-on').checked, title: f('ds-h-title').value, text: f('ds-h-text').value, start: f('ds-h-start').value, end: f('ds-h-end').value };
+            } else if (designerTab === 'legal') {
+                u.legal = { impressum: f('ds-leg-imp').value, privacy: f('ds-leg-priv').value };
+            }
 
-        const res = await apiPost('homepage', u);
-        if (res.success) showToast('Website Designer gespeichert!');
-    };
+            const res = await apiPost('homepage', u);
+            if (res.success) showToast('Website Designer gespeichert!');
+        };
+    }
 
     // Upload handlers
     const setupUpload = (btnId, inputId, hiddenId) => {
