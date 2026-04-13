@@ -23,7 +23,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         const areaId = window.resAreaId;
         if (!date || !areaId) return;
 
-        // Collect all possible times for this day from opening hours
         const dayKey = ['So','Mo','Di','Mi','Do','Fr','Sa'][new Date(date).getDay()];
         const oh = homeData.openingHours?.[dayKey];
         if (!oh || oh.closed) {
@@ -55,14 +54,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function loadPlugins() {
         const plugins = await get('plugins');
         if (!plugins) return;
-        
-        // Use Promise.all to load scripts in parallel
         const loaders = plugins.filter(p => p.enabled).map(p => {
             return new Promise((resolve) => {
                 const script = document.createElement('script');
                 script.src = `/plugins/${p.id}/website.js`;
                 script.onload = resolve;
-                script.onerror = resolve; // Continue even if one fails
+                script.onerror = resolve;
                 document.head.appendChild(script);
             });
         });
@@ -78,15 +75,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- INIT ---
     async function init() {
-        // Load homepage config
         const hp = await get('homepage');
-        if (hp) { 
-            homeData = hp; 
-            applyBranding(hp); 
-            renderNav(hp.tabs, hp.activeModules, hp.pages); 
-            initConsentEngine(hp.cookieBanner); 
-            
-            // Handle deactivation info
+        if (hp) {
+            homeData = hp;
+            applyBranding(hp);
+            renderNav(hp.tabs, hp.activeModules, hp.pages);
+            initConsentEngine(hp.cookieBanner);
+
             if (hp.activeModules?.reservations === false) {
                 const resV = document.getElementById('view-reservations');
                 if (resV) {
@@ -100,39 +95,27 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 <p style="font-size:1.1rem; line-height:1.6; opacity:.8;">${hp.activeModules.resDisabledText || 'Aktuell sind keine Online-Reservierungen möglich. Bitte kontaktieren Sie uns direkt.'}${phoneSuffix}</p>
                             </div>
                         </div>`;
-                    }
                 }
+            }
 
             const br = await get('branding');
             if (br) {
                 const restaurantName = br.name || 'OPA! Santorini';
                 document.title = restaurantName;
-                
                 const footerNameEl = document.getElementById('footer-name');
                 if (footerNameEl) footerNameEl.textContent = restaurantName;
-                
                 const navLogoEl = document.getElementById('nav-logo');
                 if (navLogoEl) navLogoEl.textContent = restaurantName;
-
                 if (br.favicon) {
                     let link = document.querySelector("link[rel~='icon']");
-                    if (!link) {
-                        link = document.createElement('link');
-                        link.rel = 'icon';
-                        document.head.appendChild(link);
-                    }
+                    if (!link) { link = document.createElement('link'); link.rel = 'icon'; document.head.appendChild(link); }
                     link.href = br.favicon;
                 }
             }
 
-            // Load Map Info
-            if (hp.location) renderLocationArea(hp.location, br?.name);
-
-            // Notification Checks
+            if (hp.location) renderLocationArea(hp.location, (await get('branding'))?.name);
             checkVacationStatus(hp.vacation);
             checkHolidayStatus(hp.holiday);
-
-            // Render Opening Hours in Reservation View
             if (hp.openingHours) renderOpeningHoursTable(hp.openingHours);
         }
 
@@ -145,18 +128,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             setTimeout(() => { d.classList.add('out'); setTimeout(() => d.remove(), 800); }, 4000);
         };
 
-        // Load menu
         const m = await get('menu');
-        if (m && Array.isArray(m)) { 
-            menuItems = m; 
-            renderCategories(); 
-            applyMenuFilter(); 
+        if (m && Array.isArray(m)) {
+            menuItems = m;
+            renderCategories();
+            applyMenuFilter();
         } else {
             const list = document.getElementById('menu-list');
             if (list) list.innerHTML = '<p style="text-align:center;padding:40px;opacity:.5;">Speisekarte konnte nicht geladen werden.</p>';
         }
 
-        // Footer year
         document.getElementById('footer-year').textContent = new Date().getFullYear();
 
         const resForm = document.getElementById('res-form');
@@ -180,23 +161,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                     });
                     const res = await r.json();
                     if (res.success) {
-                        if (res.isInquiry) {
-                            toast('Vielen Dank für Ihre Anfrage! Wir prüfen die Verfügbarkeit.');
-                        } else {
-                            toast('Vielen Dank für Ihre Reservierung! Wir freuen uns auf Sie.');
-                        }
+                        if (res.isInquiry) toast('Vielen Dank für Ihre Anfrage! Wir prüfen die Verfügbarkeit.');
+                        else toast('Vielen Dank für Ihre Reservierung! Wir freuen uns auf Sie.');
                         resForm.reset();
-                        checkLiveAvailability(); // Reset UI
+                        checkLiveAvailability();
                     } else {
                         toast(res.reason || 'Etwas ist schiefgelaufen.');
                     }
-                } catch (err) {
-                    toast('Verbindungsfehler. Bitte versuchen Sie es später erneut.');
-                }
+                } catch (err) { toast('Verbindungsfehler. Bitte versuchen Sie es später erneut.'); }
             });
         }
 
-        // Trigger when selections are made
         ['res-date', 'res-time', 'res-guests'].forEach(id => {
             const el = document.getElementById(id);
             if (el) {
@@ -215,29 +190,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         } else {
             document.getElementById('hero-bg').style.backgroundImage = `url('/admin/assets/santorini_bg.png')`;
         }
-        
         if (d.welcomeTitle) document.getElementById('welcome-title').textContent = d.welcomeTitle;
         if (d.welcomeText) document.getElementById('welcome-text').textContent = d.welcomeText;
         if (d.promotionText && d.promotionEnabled !== false) document.getElementById('promo-text').textContent = d.promotionText;
         const promo = document.getElementById('promo-section');
         if (promo && d.promotionEnabled === false) promo.style.display = 'none';
-
-        // Welcome image (CMS controlled)
         const wImg = document.getElementById('welcome-img');
-        if (d.welcomeImage && wImg) {
-            wImg.src = d.welcomeImage;
-            wImg.style.display = 'block';
-        } else if (wImg) {
-            // Fallback: use hero bg
-            wImg.src = d.bgImage || '/admin/assets/greek_bg.png';
-        }
+        if (d.welcomeImage && wImg) { wImg.src = d.welcomeImage; wImg.style.display = 'block'; }
+        else if (wImg) { wImg.src = d.bgImage || '/admin/assets/greek_bg.png'; }
     }
 
     // --- NAVIGATION ---
     function renderNav(tabs, modules = {}, pages = []) {
         const c = document.getElementById('nav-links');
         if (!c) return;
-        
         if (!tabs || tabs.length === 0) {
             tabs = [
                 { id: 'home', label: 'Startseite', active: true },
@@ -246,23 +212,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 { id: 'location', label: 'Standort', active: true }
             ];
         }
-        
         let active = tabs.filter(t => t.active);
-        
-        // Hide reservations if module is disabled
-        if (modules.reservations === false) {
-            active = active.filter(t => t.id !== 'reservations');
-        }
-
-        // Füge Custom Pages zur Navigation hinzu
+        if (modules.reservations === false) active = active.filter(t => t.id !== 'reservations');
         if (pages && Array.isArray(pages)) {
             pages.forEach(p => {
-                if (p.active !== false) {
-                    active.push({ id: `custom-${p.id}`, label: p.title, active: true });
-                }
+                if (p.active !== false) active.push({ id: `custom-${p.id}`, label: p.title, active: true });
             });
         }
-
         c.innerHTML = active.map(t =>
             `<a data-tab="${t.id}" onclick="window.switchTab('${t.id}')">${t.label}</a>`
         ).join('');
@@ -279,8 +235,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         c.innerHTML = cats.map(cat =>
             `<button class="cat-btn ${cat === 'Alle' ? 'active' : ''}" onclick="window.filterMenu('${cat}', this)">${cat}</button>`
         ).join('');
-
-        // Attach search listener
         const searchInput = document.getElementById('menu-search');
         if (searchInput) {
             searchInput.addEventListener('input', (e) => {
@@ -320,20 +274,30 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         if (empty) empty.style.display = 'none';
 
+        // FIX: data-menu-item, data-item-name, data-item-price damit cart.js
+        //      injectAddButtons() den "+"-Button korrekt einfügen kann
         list.innerHTML = items.map(item => {
+            const id    = String(item.id || item._id || item.name);
+            const price = parseFloat(item.price).toFixed(2);
             const allergenBadges = (item.allergens || []).length
                 ? `<span class="dish-badges">${item.allergens.map(a => `<span class="badge">${a}</span>`).join('')}</span>` : '';
             return `
-            <div class="dish-card">
+            <div class="dish-card"
+                 data-menu-item="${id}"
+                 data-item-name="${item.name.replace(/"/g, '&quot;')}"
+                 data-item-price="${price}">
                 <div class="dish-card-img">
-                    ${item.image ? `<img src="${item.image}" alt="${item.name}">` : `<span><i class="fas fa-utensils"></i> ${item.cat}</span>`}
+                    ${item.image
+                        ? `<img src="${item.image}" alt="${item.name}" loading="lazy">`
+                        : `<span><i class="fas fa-utensils"></i> ${item.cat}</span>`
+                    }
                 </div>
                 <div class="dish-card-body">
                     <span class="cat-tag">${item.cat}</span>
-                    <h3>${item.name}</h3>
+                    <h3 data-item-name>${item.name}</h3>
                     ${item.desc ? `<p class="dish-desc">${item.desc}</p>` : ''}
                     <div class="dish-card-footer">
-                        <span class="dish-price">${parseFloat(item.price).toFixed(2)} €</span>
+                        <span class="dish-price">${price} €</span>
                         ${allergenBadges}
                     </div>
                 </div>
@@ -341,99 +305,68 @@ document.addEventListener('DOMContentLoaded', async () => {
         }).join('');
     }
 
-    // --- GDPR CONSENT ENGINE ---
+    // --- COOKIE CONSENT ENGINE ---
+    // FIX: app.js überschreibt NICHT mehr die Funktionen aus cookie-consent.js.
+    //      initConsentEngine() prüft nur ob der Banner angezeigt werden soll
+    //      und delegiert alles an window.OPAConsent (cookie-consent.js).
     function initConsentEngine(cfg) {
         if (!cfg?.enabled) return;
-        const consent = localStorage.getItem('opa_cookie_consent');
-        const trigger = document.getElementById('cookie-settings-trigger');
-        if (trigger) trigger.style.display = 'flex';
-
-        if (!consent) {
-            window.showCookieBanner(true);
-        } else {
-            const prefs = JSON.parse(consent);
-            console.log('Applied cookie consent:', prefs);
-        }
+        // cookie-consent.js initialisiert sich selbst via DOMContentLoaded.
+        // Wir stellen nur sicher dass der Trigger-Button sichtbar ist
+        // sobald OPAConsent geladen ist.
+        const showTrigger = () => {
+            const trigger = document.getElementById('cookie-settings-trigger');
+            if (trigger && window.OPAConsent) {
+                // Trigger nur anzeigen wenn Consent bereits gegeben wurde
+                if (window.OPAConsent.getChoices()) trigger.style.display = 'flex';
+            }
+        };
+        // OPAConsent ist evtl. noch nicht initialisiert → kurz warten
+        if (window.OPAConsent) showTrigger();
+        else window.addEventListener('load', showTrigger);
     }
 
-    window.showCookieBanner = (show) => {
-        const bar = document.getElementById('cookie-banner');
-        if (bar) {
-            bar.style.display = show ? 'flex' : 'none';
-            if (show) window.toggleCookieView(false);
-        }
+    // FIX: Diese Funktionen wurden früher von app.js überschrieben und haben
+    //      einen anderen localStorage-Key ('opa_cookie_consent') geschrieben,
+    //      während cookie-consent.js 'opa_consent' liest/schreibt.
+    //      → Alle Cookie-Aktionen delegieren jetzt an window.OPAConsent.
+    window.acceptAllCookies   = () => window.OPAConsent?.acceptAll   ? window.OPAConsent.acceptAll()   : null;
+    window.rejectNonEssential = () => window.OPAConsent?.rejectAll   ? window.OPAConsent.rejectAll()   : null;
+    window.saveCustomCookies  = () => window.OPAConsent?.saveCustom  ? window.OPAConsent.saveCustom()  : null;
+    window.showCookieBanner   = (force) => {
+        if (force && window.OPAConsent) window.OPAConsent.showPreferences();
     };
-
-    window.toggleCookieView = (toSettings) => {
+    window.toggleCookieView   = (toSettings) => {
         const overview = document.getElementById('cookie-view-overview');
         const settings = document.getElementById('cookie-view-settings');
-        if (overview) overview.style.display = toSettings ? 'none' : 'block';
-        if (settings) settings.style.display = toSettings ? 'block' : 'none';
+        if (overview) overview.style.display = toSettings ? 'none' : '';
+        if (settings) settings.style.display = toSettings ? '' : 'none';
     };
-
-    window.acceptAllCookies = () => {
-        const prefs = { essential: true, functional: true, analytics: true };
-        saveConsent(prefs);
-    };
-
-    window.rejectNonEssential = () => {
-        const prefs = { essential: true, functional: false, analytics: false };
-        saveConsent(prefs);
-    };
-
-    window.saveCustomCookies = () => {
-        const prefs = {
-            essential: true,
-            functional: document.getElementById('cookie-cat-func').checked,
-            analytics: document.getElementById('cookie-cat-anal').checked
-        };
-        saveConsent(prefs);
-    };
-
-    function saveConsent(prefs) {
-        localStorage.setItem('opa_cookie_consent', JSON.stringify(prefs));
-        window.showCookieBanner(false);
-    }
-
 
     // --- VIEW SWITCHING ---
     window.switchTab = (id) => {
-        // Hide all views
         ['view-home', 'view-menu', 'view-reservations', 'view-legal', 'view-location', 'view-custom'].forEach(v => {
             const el = document.getElementById(v);
             if (el) el.style.display = 'none';
         });
-        // Show target
         const hero = document.getElementById('hero-section');
         if (hero) hero.style.display = (id === 'home') ? 'flex' : 'none';
-
         const promo = document.getElementById('promo-section');
         if (promo) promo.style.display = (id === 'home') ? 'block' : 'none';
 
-        // Show target
         let targetId = `view-${id}`;
-        if (id.startsWith('custom-')) {
-            targetId = 'view-custom';
-            renderCustomPage(id);
-        }
+        if (id.startsWith('custom-')) { targetId = 'view-custom'; renderCustomPage(id); }
 
         const target = document.getElementById(targetId);
         if (target) {
             target.style.display = 'block';
-            // Scroll logic
-            if (id === 'home') {
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-            } else {
-                setTimeout(() => {
-                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }, 50);
-            }
+            if (id === 'home') window.scrollTo({ top: 0, behavior: 'smooth' });
+            else setTimeout(() => target.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
         }
 
         if (id === 'legal') window.setLegalView('impressum');
         currentView = id;
 
-        // Nav active state
         document.querySelectorAll('#nav-links a').forEach(a => {
             a.classList.toggle('active', a.dataset.tab === id);
         });
@@ -446,9 +379,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const p = homeData.pages?.find(pg => pg.id === rawId || pg.id === id);
         const c = document.getElementById('custom-page-container');
         if (!p || !c) return;
-        
         const hasImg = p.image && p.image.trim() !== '';
-        
         c.innerHTML = `
             <div class="glass-panel" style="padding:0; border-radius:32px; overflow:hidden; border:1px solid rgba(255,255,255,.2);">
                 ${hasImg ? `
@@ -475,12 +406,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     function renderLocationArea(loc, restaurantName = "Restaurant") {
         const c = document.getElementById('location-container');
         if (!c || !loc) return;
-        
         const q = loc.address || restaurantName;
         const encAddr = encodeURIComponent(q);
         const isApple = /iPhone|iPad|iPod|Macintosh/i.test(navigator.userAgent);
         const mapUrl = isApple ? `http://maps.apple.com/?q=${encAddr}` : `https://www.google.com/maps/search/?api=1&query=${encAddr}`;
-
         c.innerHTML = `
             <div class="glass-panel" style="padding:40px; border-radius:32px;">
                 <div style="display:flex; flex-wrap:wrap; gap:40px; align-items:center;">
@@ -514,7 +443,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('legal-content').textContent = type === 'impressum' ? homeData.legal.impressum : homeData.legal.privacy;
     };
 
-    // --- TOAST ---
     function toast(msg) {
         const d = document.createElement('div');
         d.textContent = msg;
@@ -522,12 +450,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.body.appendChild(d);
         setTimeout(() => d.remove(), 3000);
     }
-    // --- RESERVATION STEPPER LOGIC ---
+
+    // --- RESERVATION STEPPER ---
     window.resGuests = 2;
     window.resDate = null;
     window.resAreaId = null;
     let currentCalMonth = new Date().getMonth();
-    let currentCalYear = new Date().getFullYear();
+    let currentCalYear  = new Date().getFullYear();
 
     window.adjustGuests = (delta) => {
         const input = document.getElementById('res-guests');
@@ -541,34 +470,30 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     window.navCalendar = (delta) => {
         currentCalMonth += delta;
-        if (currentCalMonth < 0) { currentCalMonth = 11; currentCalYear--; }
-        if (currentCalMonth > 11) { currentCalMonth = 0; currentCalYear++; }
+        if (currentCalMonth < 0)  { currentCalMonth = 11; currentCalYear--; }
+        if (currentCalMonth > 11) { currentCalMonth = 0;  currentCalYear++; }
         renderResCalendar();
     };
 
     function renderResCalendar() {
-        const grid = document.getElementById('res-calendar-grid');
+        const grid  = document.getElementById('res-calendar-grid');
         const label = document.getElementById('calendar-month-year');
         if (!grid || !label) return;
-
-        const months = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+        const months = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
         label.textContent = `${months[currentCalMonth]} ${currentCalYear}`;
-
-        const first = new Date(currentCalYear, currentCalMonth, 1).getDay();
+        const first  = new Date(currentCalYear, currentCalMonth, 1).getDay();
         const daysIn = new Date(currentCalYear, currentCalMonth + 1, 0).getDate();
-        const start = (first === 0) ? 6 : first - 1;
-
+        const start  = (first === 0) ? 6 : first - 1;
         let html = ['Mo','Di','Mi','Do','Fr','Sa','So'].map(d => `<div class="cal-modern-head">${d}</div>`).join('');
         for (let i = 0; i < start; i++) html += '<div class="cal-modern-day empty"></div>';
-
         const today = new Date(); today.setHours(0,0,0,0);
         for (let i = 1; i <= daysIn; i++) {
-            const d = new Date(currentCalYear, currentCalMonth, i);
+            const d    = new Date(currentCalYear, currentCalMonth, i);
             const dStr = `${currentCalYear}-${String(currentCalMonth+1).padStart(2,'0')}-${String(i).padStart(2,'0')}`;
-            const isPast = d < today;
+            const isPast  = d < today;
             const isToday = d.getTime() === today.getTime();
-            const isSel = window.resDate === dStr;
-            html += `<div class="cal-modern-day ${isPast?'past':''} ${isToday?'today':''} ${isSel?'selected':''}" 
+            const isSel   = window.resDate === dStr;
+            html += `<div class="cal-modern-day ${isPast?'past':''} ${isToday?'today':''} ${isSel?'selected':""}" 
                           onclick="${isPast ? '' : `window.selectResDate('${dStr}')`}">${i}</div>`;
         }
         grid.innerHTML = html;
@@ -577,18 +502,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.selectResDate = (dStr) => {
         window.resDate = dStr;
         renderResCalendar();
-        
-        // Activate step 3
         const step3 = document.getElementById('res-step-3');
         step3.style.opacity = '1';
         step3.style.pointerEvents = 'all';
-        
         if (!window.resAreaId) {
             const firstArea = document.querySelector('.area-tab');
             if (firstArea) window.selectArea(firstArea.dataset.id);
-        } else {
-            checkLiveAvailability();
-        }
+        } else { checkLiveAvailability(); }
     };
 
     window.selectArea = (id) => {
@@ -600,7 +520,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     function renderTimeGrid(grid) {
         const container = document.getElementById('res-time-grid');
         if (!container) return;
-        
         const sortedTimes = Object.keys(grid).sort();
         container.innerHTML = sortedTimes.map(t => {
             const { available } = grid[t];
@@ -617,11 +536,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         overlay.style.display = 'flex';
     };
 
-    window.closeResModal = () => {
-        document.getElementById('res-contact-overlay').style.display = 'none';
-    };
+    window.closeResModal = () => { document.getElementById('res-contact-overlay').style.display = 'none'; };
 
-    // Replace old init logic with areas fetch
     const oldInit = init;
     init = async () => {
         await oldInit();
@@ -636,7 +552,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         renderResCalendar();
     };
 
-    // Replace Form Submission
     const resForm = document.getElementById('res-form');
     if (resForm) {
         resForm.onsubmit = async (e) => {
@@ -644,18 +559,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             const btn = document.getElementById('res-submit');
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sende...';
-
             const payload = {
-                name: document.getElementById('res-name').value,
-                email: document.getElementById('res-email').value,
-                phone: document.getElementById('res-phone').value,
-                date: window.resDate,
-                time: window.resTime,
+                name:   document.getElementById('res-name').value,
+                email:  document.getElementById('res-email').value,
+                phone:  document.getElementById('res-phone').value,
+                date:   window.resDate,
+                time:   window.resTime,
                 guests: window.resGuests,
                 areaId: window.resAreaId,
-                note: document.getElementById('res-note').value
+                note:   document.getElementById('res-note').value
             };
-
             try {
                 const r = await fetch(`${API}/reservations/submit`, {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -667,9 +580,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     window.closeResModal();
                     window.switchTab('home');
                     resForm.reset();
-                } else {
-                    toast('Fehler: ' + (res.reason || 'Unbekannt'));
-                }
+                } else { toast('Fehler: ' + (res.reason || 'Unbekannt')); }
             } catch (e) { toast('Verbindungsfehler!'); }
             btn.disabled = false;
             btn.innerHTML = 'Kostenfrei reservieren <i class="fas fa-check"></i>';
@@ -680,13 +591,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!v) return;
         const now = new Date();
         const start = v.start ? new Date(v.start) : null;
-        const end = v.end ? new Date(v.end) : null;
+        const end   = v.end   ? new Date(v.end)   : null;
         const manual = v.enabled === true;
         let isActive = false;
-
         if (manual) isActive = true;
         else if (start && end && now >= start && now <= end) isActive = true;
-
         if (isActive && !sessionStorage.getItem('opa_vacation_seen')) {
             const modal = document.getElementById('vacation-modal');
             if (modal) {
@@ -696,8 +605,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         <h2>${v.title || 'Betriebsferien'}</h2>
                         <p>${v.text || 'Wir machen Urlaub!'}</p>
                         <button class="btn" onclick="window.closeVacation()">Verstanden</button>
-                    </div>
-                `;
+                    </div>`;
                 modal.classList.add('active');
             }
         }
@@ -705,23 +613,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     window.closeVacation = () => {
         const modal = document.getElementById('vacation-modal');
-        if (modal) {
-            modal.classList.remove('active');
-            sessionStorage.setItem('opa_vacation_seen', '1');
-        }
+        if (modal) { modal.classList.remove('active'); sessionStorage.setItem('opa_vacation_seen', '1'); }
     };
 
     function checkHolidayStatus(v) {
         if (!v || !v.enabled) return;
         const now = new Date();
         const start = v.start ? new Date(v.start) : null;
-        const end = v.end ? new Date(v.end) : null;
-
+        const end   = v.end   ? new Date(v.end)   : null;
         if (start && end && now >= start && now <= end && !sessionStorage.getItem('opa_holiday_seen')) {
             const modal = document.getElementById('holiday-modal');
             if (modal) {
                 document.getElementById('holiday-title').textContent = v.title || 'Feiertags-Info';
-                document.getElementById('holiday-text').textContent = v.text || 'Gern sind wir für Sie da!';
+                document.getElementById('holiday-text').textContent  = v.text  || 'Gern sind wir für Sie da!';
                 modal.classList.add('active');
             }
         }
@@ -729,33 +633,21 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     window.closeHoliday = () => {
         const modal = document.getElementById('holiday-modal');
-        if (modal) {
-            modal.classList.remove('active');
-            sessionStorage.setItem('opa_holiday_seen', '1');
-        }
+        if (modal) { modal.classList.remove('active'); sessionStorage.setItem('opa_holiday_seen', '1'); }
     };
 
     function renderOpeningHoursTable(oh) {
         const container = document.getElementById('res-opening-list');
         if (!container) return;
-
-        const days = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
-        const todayIdx = (new Date().getDay() + 6) % 7; // Map 0 (Sun) to 6, 1 (Mon) to 0...
-        
+        const days = ['Mo','Di','Mi','Do','Fr','Sa','So'];
+        const todayIdx = (new Date().getDay() + 6) % 7;
         container.innerHTML = days.map((day, idx) => {
             const data = oh[day] || { closed: true };
             const isToday = idx === todayIdx;
             const timeStr = data.closed ? 'Geschlossen' : `${data.open} - ${data.close} Uhr`;
-            
-            return `
-                <div class="res-opening-row ${isToday ? 'today' : ''}">
-                    <span>${day}</span>
-                    <span>${timeStr}</span>
-                </div>
-            `;
+            return `<div class="res-opening-row ${isToday ? 'today' : ''}"><span>${day}</span><span>${timeStr}</span></div>`;
         }).join('');
     }
 
     init();
 });
-
