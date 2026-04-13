@@ -45,11 +45,20 @@ try {
             directives: {
                 defaultSrc:  ["'self'"],
                 scriptSrc:   ["'self'", "'unsafe-inline'", "'unsafe-eval'"],  // CMS/Frontend benötigt inline scripts
-                styleSrc:    ["'self'", "'unsafe-inline'"],
-                imgSrc:      ["'self'", 'data:', 'blob:'],
-                fontSrc:     ["'self'", 'data:'],
-                connectSrc:  ["'self'", 'ws:', 'wss:'],  // Socket.IO
-                frameSrc:    ["'none'"],
+                styleSrc:    ["'self'", "'unsafe-inline'",
+                              'https://cdnjs.cloudflare.com',          // Font Awesome CSS
+                              'https://fonts.googleapis.com'],          // Google Fonts (optional)
+                fontSrc:     ["'self'", 'data:',
+                              'https://cdnjs.cloudflare.com',          // Font Awesome Webfonts
+                              'https://fonts.gstatic.com'],             // Google Fonts
+                imgSrc:      ["'self'", 'data:', 'blob:',
+                              'https://maps.gstatic.com',
+                              'https://*.googleapis.com'],
+                connectSrc:  ["'self'", 'ws:', 'wss:'],                // Socket.IO
+                frameSrc:    ["'self'",
+                              'https://maps.google.com',
+                              'https://maps.googleapis.com',
+                              'https://www.google.com'],               // Google Maps iFrame
                 objectSrc:   ["'none'"],
             }
         },
