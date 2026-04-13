@@ -78,6 +78,8 @@ app.use('/api',              require('./server/routes/settings.js')(requireAuth,
 app.use('/api/upload',       require('./server/routes/upload.js')(requireAuth, UPLOADS_DIR));
 // Cookie Consent API (DSGVO)
 app.use('/api',              require('./server/routes/cookie.js')(requireAuth));
+// Cart & Online-Orders (Warenkorb öffentlich, Bestellung ab PRO_PLUS)
+app.use('/api/cart',         require('./server/routes/cart.js')(requireLicense, io));
 
 // --- Plugins ---
 const getInstalledPlugins = () => {
