@@ -32,18 +32,41 @@ async function getMaxDishes(DB, domain) {
         try {
             const payload = jwt.decode(lic.licenseToken);
             if (payload?.limits?.max_dishes) {
-                console.warn('\u26a0\ufe0f  [menu/import] Token nicht verifizierbar – nutze dekodiertes Limit:', payload.limits.max_dishes);
+                console.warn('\u26a0\ufe0f  [menu/import] Token nicht verifizierbar \u2013 nutze dekodiertes Limit:', payload.limits.max_dishes);
                 return payload.limits.max_dishes;
             }
         } catch (_) {}
     }
 
     if (lic.key && !lic.isTrial) {
-        console.warn('\u26a0\ufe0f  [menu/import] Kein verifizierbares Token, aber License-Key vorhanden – Limit 9999.');
+        console.warn('\u26a0\ufe0f  [menu/import] Kein verifizierbares Token, aber License-Key vorhanden \u2013 Limit 9999.');
         return 9999;
     }
 
     return verified?.limits?.max_dishes ?? 30;
+}
+
+/**
+ * Stellt sicher dass eine Kategorie (label-String) in der categories-Tabelle existiert.
+ * Falls nicht, wird sie automatisch angelegt.
+ */
+async function ensureCategoryExists(catLabel) {
+    if (!catLabel || typeof catLabel !== 'string') return;
+    const label = catLabel.trim();
+    if (!label) return;
+    try {
+        const existing = await DB.getCategories();
+        const alreadyExists = Array.isArray(existing) && existing.some(
+            c => (c.label || '').trim().toLowerCase() === label.toLowerCase()
+        );
+        if (!alreadyExists) {
+            const id = label.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_') || Date.now().toString();
+            await DB.addCategory({ id, label, icon: 'utensils', active: true, sort_order: existing.length || 0 });
+            console.log(`[categories] Auto-angelegt: "${label}"`);
+        }
+    } catch (e) {
+        console.warn('[categories] ensureCategoryExists Fehler:', e.message);
+    }
 }
 
 module.exports = (requireAuth, requireLicense) => {
@@ -65,10 +88,11 @@ module.exports = (requireAuth, requireLicense) => {
             if (menu.length >= maxDishes)
                 return res.status(403).json({ success: false, reason: `Ihr ${lic?.label || lic?.type || 'Free'}-Plan erlaubt maximal ${maxDishes} Speisen.` });
             const m = req.body;
-            // Kompatibilitäts-Mapping: 'nr' → 'number'
             if (typeof m.number === 'undefined' && typeof m.nr !== 'undefined') m.number = m.nr;
             if (typeof m.number === 'string') m.number = m.number.trim() || null;
             m.id = m.id || Date.now().toString();
+            // Kategorie automatisch anlegen falls noch nicht vorhanden
+            if (m.cat) await ensureCategoryExists(m.cat);
             await DB.addMenu(m);
             res.json({ success: true, id: m.id });
         } catch(e) { res.status(500).json({ success: false, reason: e.message }); }
@@ -77,9 +101,10 @@ module.exports = (requireAuth, requireLicense) => {
     router.put('/menu/:id', requireAuth, requireLicense('menu_edit'), async (req, res) => {
         try {
             const body = req.body;
-            // Kompatibilitäts-Mapping: 'nr' → 'number'
             if (typeof body.number === 'undefined' && typeof body.nr !== 'undefined') body.number = body.nr;
             if (typeof body.number === 'string') body.number = body.number.trim() || null;
+            // Kategorie automatisch anlegen falls noch nicht vorhanden
+            if (body.cat) await ensureCategoryExists(body.cat);
             const updated = await DB.updateMenu(req.params.id, body);
             if (!updated) return res.status(404).json({ success: false, reason: 'Gericht nicht gefunden.' });
             res.json({ success: true, item: updated });
@@ -94,12 +119,36 @@ module.exports = (requireAuth, requireLicense) => {
     // --- Categories ---
     router.get('/categories', async (req, res) => {
         try {
-            const result = await DB.getCategories();
-            // Immer ein Array zurückgeben – verhindert null.map() im Frontend
-            res.json(Array.isArray(result) ? result : []);
+            // Kategorien aus der categories-Tabelle
+            const dbCats = await DB.getCategories();
+            const safeCats = Array.isArray(dbCats) ? dbCats : [];
+
+            // Zusätzlich: alle cat-Werte aus der menu-Tabelle einschließen
+            // (für Gerichte die vor der Kategorienverwaltung angelegt wurden)
+            const menuItems = await DB.getMenu();
+            const menuCatLabels = Array.isArray(menuItems)
+                ? [...new Set(menuItems.map(m => (m.cat || '').trim()).filter(Boolean))]
+                : [];
+
+            const existingLabels = new Set(safeCats.map(c => (c.label || '').trim().toLowerCase()));
+
+            // Fehlende Kategorien aus Gerichten automatisch in DB eintragen
+            for (const label of menuCatLabels) {
+                if (!existingLabels.has(label.toLowerCase())) {
+                    try {
+                        const id = label.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_') || Date.now().toString();
+                        await DB.addCategory({ id, label, icon: 'utensils', active: true, sort_order: safeCats.length });
+                        safeCats.push({ id, label, icon: 'utensils', active: 1, sort_order: safeCats.length });
+                        existingLabels.add(label.toLowerCase());
+                        console.log(`[categories] Migriert aus Gerichten: "${label}"`);
+                    } catch (e) { /* doppelter insert – ignorieren */ }
+                }
+            }
+
+            res.json(safeCats);
         } catch(e) {
             console.error('[GET /categories] Fehler:', e.message);
-            res.json([]); // Kein 500 – leeres Array verhindert Frontend-Crash
+            res.json([]);
         }
     });
 
@@ -158,7 +207,7 @@ module.exports = (requireAuth, requireLicense) => {
             if (menu && Array.isArray(menu) && menu.length > maxDishes) {
                 return res.status(403).json({
                     success: false,
-                    reason: `Ihr Plan erlaubt maximal ${maxDishes} Speisen. Die Backup-Datei enthält ${menu.length} Einträge.`,
+                    reason: `Ihr Plan erlaubt maximal ${maxDishes} Speisen. Die Backup-Datei enth\u00e4lt ${menu.length} Eintr\u00e4ge.`,
                     limit: maxDishes, current: menu.length
                 });
             }
