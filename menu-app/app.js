@@ -65,8 +65,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             homeData = hp;
             applyBranding(hp);
             renderNav(hp.tabs, hp.activeModules, hp.pages);
-            // FIX: initConsentEngine setzt KEINE window.*-Funktionen mehr.
-            // cookie-consent.js setzt window.acceptAllCookies etc. selbst.
             initConsentEngine(hp.cookieBanner);
 
             if (hp.activeModules?.reservations === false) {
@@ -217,8 +215,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Kachel-Klick-Modus: wird aus homeData.cartClickMode gelesen
     // Mögliche Werte: 'button' (nur +), 'tile' (nur Kachel), 'both' (beides)
-    // Wird von cart.js via window.OPA_CART_CLICK_MODE ausgelesen
-    window.OPA_CART_CLICK_MODE = 'button';
+    // FIX: Default auf 'tile' – kein + Button mehr vorhanden
+    window.OPA_CART_CLICK_MODE = 'tile';
 
     function renderCategories() {
         const c = document.getElementById('categories');
@@ -266,8 +264,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         if (empty) empty.style.display = 'none';
 
-        // Kachel-Klick-Modus aus homeData laden
-        const clickMode = homeData.cartClickMode || 'button';
+        // Kachel-Klick-Modus aus homeData laden (Fallback: 'tile')
+        const clickMode = homeData.cartClickMode || 'tile';
         window.OPA_CART_CLICK_MODE = clickMode;
 
         // tile / both: Kachel bekommt cursor:pointer + data-cart-tile Marker
@@ -302,23 +300,26 @@ document.addEventListener('DOMContentLoaded', async () => {
                 </div>
             </div>`;
         }).join('');
+
+        // FIX: injectAddButtons() nach renderMenu() aufrufen damit der
+        // korrekte Modus sofort greift und nicht auf den MutationObserver
+        // gewartet werden muss (Race Condition).
+        if (window.OpaCart) {
+            // cart.js ist bereits geladen → direkt injizieren
+            if (typeof window._opaInjectAddButtons === 'function') {
+                window._opaInjectAddButtons();
+            }
+        }
     }
 
     // --- COOKIE CONSENT ENGINE ---
-    // FIX: app.js überschreibt KEINE Cookie-Funktionen mehr.
-    // cookie-consent.js setzt window.acceptAllCookies / rejectNonEssential /
-    // saveCustomCookies / toggleCookieView selbst – und wird NACH app.js geladen,
-    // sodass es immer gewinnt. initConsentEngine() hier tut nichts weiter als
-    // den Trigger-Button ggf. zu verstecken wenn der Banner deaktiviert ist.
     function initConsentEngine(cfg) {
         if (!cfg?.enabled) {
-            // Cookie-Banner vom Admin deaktiviert → Banner und Trigger ausblenden
             const banner  = document.getElementById('cookie-banner');
             const trigger = document.getElementById('cookie-settings-trigger');
             if (banner)  banner.style.display  = 'none';
             if (trigger) trigger.style.display = 'none';
         }
-        // Alle anderen Aktionen übernimmt cookie-consent.js vollständig.
     }
 
     // --- VIEW SWITCHING ---

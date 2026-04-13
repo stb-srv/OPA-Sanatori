@@ -5,8 +5,8 @@
  * Funktioniert unabhängig vom gewählten Lizenzplan.
  *
  * Kachel-Klick-Modus: window.OPA_CART_CLICK_MODE (gesetzt von app.js)
- *   'button' – nur der + Button fügt hinzu (Standard)
- *   'tile'   – Klick auf die ganze Kachel fügt hinzu (kein + Button)
+ *   'button' – nur der + Button fügt hinzu
+ *   'tile'   – Klick auf die ganze Kachel fügt hinzu (Standard)
  *   'both'   – Kachel UND + Button fügen hinzu
  */
 
@@ -139,7 +139,7 @@
         if (!body) return;
 
         if (cartItems.length === 0) {
-            const mode = window.OPA_CART_CLICK_MODE || 'button';
+            const mode = window.OPA_CART_CLICK_MODE || 'tile';
             const hint = mode === 'tile' ? 'Tippe auf ein Gericht um es hinzuzufügen.'
                        : mode === 'both' ? 'Tippe auf ein Gericht oder den + Button.'
                        : 'Tippe auf <strong>+</strong> bei einem Gericht um es hinzuzufügen.';
@@ -355,12 +355,12 @@
     // =========================================================================
     // Add-Buttons + Kachel-Klick injizieren
     // Modus wird aus window.OPA_CART_CLICK_MODE gelesen:
-    //   'button' – nur + Button (Standard)
-    //   'tile'   – Kachel klickbar, kein + Button
+    //   'button' – nur + Button
+    //   'tile'   – Kachel klickbar, kein + Button (Standard)
     //   'both'   – Kachel UND + Button
     // =========================================================================
     function injectAddButtons() {
-        const mode = window.OPA_CART_CLICK_MODE || 'button';
+        const mode = window.OPA_CART_CLICK_MODE || 'tile';
         const showBtn  = (mode === 'button' || mode === 'both');
         const showTile = (mode === 'tile'   || mode === 'both');
 
@@ -369,7 +369,7 @@
             const name  = card.dataset.itemName  || card.querySelector('[data-item-name]')?.textContent || 'Artikel';
             const price = card.dataset.itemPrice || '0';
 
-            // + Button
+            // + Button (nur wenn Modus 'button' oder 'both')
             if (showBtn && !card.querySelector('.opa-add-to-cart')) {
                 const btn = document.createElement('button');
                 btn.className = 'opa-add-to-cart';
@@ -382,21 +382,22 @@
                 card.appendChild(btn);
             }
 
-            // Kachel-Klick
+            // Kachel-Klick (Modus 'tile' oder 'both')
             if (showTile && !card.dataset.cartTileAttached) {
                 card.dataset.cartTileAttached = '1';
                 card.style.cursor = 'pointer';
                 card.addEventListener('click', (e) => {
-                    // Klick auf + Button nicht doppelt zählen
                     if (e.target.closest('.opa-add-to-cart')) return;
                     addItem({ id, name, price });
-                    // Kurzes visuelles Feedback auf der Kachel
                     card.classList.add('opa-tile-added');
                     setTimeout(() => card.classList.remove('opa-tile-added'), 600);
                 });
             }
         });
     }
+
+    // Expose für app.js (direkte Aufruf nach renderMenu)
+    window._opaInjectAddButtons = injectAddButtons;
 
     const observer = new MutationObserver(() => injectAddButtons());
 
