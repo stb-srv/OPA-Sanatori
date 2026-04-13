@@ -76,6 +76,8 @@ app.use('/api/reservations', require('./server/routes/reservations.js')(requireA
 app.use('/api',              require('./server/routes/tables.js')(requireAuth));
 app.use('/api',              require('./server/routes/settings.js')(requireAuth, requireLicense, LICENSE_SERVER));
 app.use('/api/upload',       require('./server/routes/upload.js')(requireAuth, UPLOADS_DIR));
+// Cookie Consent API (DSGVO)
+app.use('/api',              require('./server/routes/cookie.js')(requireAuth));
 
 // --- Plugins ---
 const getInstalledPlugins = () => {
@@ -181,7 +183,6 @@ setInterval(async () => {
 // Bootstrap: async Start (Plugin-Loader + Server-Listen)
 // =============================================================================
 async function start() {
-    // Plugins laden (braucht await DB.getKV)
     try {
         const enabledPlugins = await DB.getKV('plugins', []);
         enabledPlugins.filter(p => p.enabled).forEach(p => {

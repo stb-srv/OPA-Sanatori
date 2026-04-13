@@ -8,6 +8,7 @@
     <link rel="icon" href="/admin/assets/favicon.svg" type="image/svg+xml">
     <meta name="description" content="Authentische griechische Küche im Herzen Münchens. Frische Zutaten, traditionelle Rezepte, modernes Ambiente.">
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="cookie-banner.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
@@ -169,6 +170,7 @@
             <button class="btn" onclick="window.closeHoliday()">Verstanden</button>
         </div>
     </div>
+
     <!-- MAP SECTION -->
     <section class="section" id="view-location" style="display:none; padding-bottom:100px;">
         <div class="container" id="location-container">
@@ -205,6 +207,8 @@
             <div class="footer-links">
                 <a onclick="window.switchTab('legal'); window.setLegalView('impressum')">Impressum</a>
                 <a onclick="window.switchTab('legal'); window.setLegalView('privacy')">Datenschutz</a>
+                <!-- DSGVO: Widerruf jederzeit möglich -->
+                <a onclick="window.OPAConsent && window.OPAConsent.showPreferences()" style="cursor:pointer;" title="Cookie-Einstellungen anpassen">Cookie-Einstellungen</a>
             </div>
             <div class="footer-muted" style="text-align:right;">
                 © <span id="footer-year"></span> Alle Rechte vorbehalten. OPA!
@@ -212,68 +216,54 @@
         </div>
     </footer>
 
-    <!-- GDPR COOKIE BAR -->
-    <div id="cookie-settings-trigger" class="cookie-trigger" onclick="window.showCookieBanner(true)">
+    <!-- GDPR COOKIE BANNER -->
+    <!-- Trigger-Button: immer im DOM, Sichtbarkeit via JS gesteuert -->
+    <div id="cookie-settings-trigger" class="cookie-trigger" style="display:none;"
+         onclick="window.OPAConsent && window.OPAConsent.showPreferences()"
+         title="Cookie-Einstellungen"
+         role="button" aria-label="Cookie-Einstellungen öffnen" tabindex="0">
         <i class="fas fa-fingerprint"></i>
     </div>
 
-    <div class="cookie-bar" id="cookie-banner" style="display:none;">
-        <div class="cookie-bar-content glass">
-            <!-- View 1: Overview -->
+    <div class="cookie-bar" id="cookie-banner" style="display:none;"
+         role="dialog" aria-modal="true" aria-label="Cookie-Einstellungen">
+        <div class="cookie-bar-content">
+
+            <!-- View 1: Übersicht -->
             <div id="cookie-view-overview">
                 <div class="cookie-bar-layout">
                     <div class="cookie-text-area">
                         <div class="cookie-header-mini">
                             <i class="fas fa-shield-alt"></i>
-                            <strong>Privatsphäre & Cookies</strong>
+                            <strong>Privatsphäre &amp; Cookies</strong>
                         </div>
-                        <p id="cookie-text">Wir nutzen Cookies, um das Nutzererlebnis zu verbessern und den Besuch unserer Website so angenehm wie möglich zu machen.</p>
+                        <p id="cookie-text">Wir nutzen Cookies, um das Nutzererlebnis zu verbessern und unsere Website optimal zu betreiben.</p>
                     </div>
+                    <!-- DSGVO: Alle 3 Buttons gleichwertig, kein Greenwashing -->
                     <div class="cookie-actions-bar">
                         <button class="btn small" onclick="window.acceptAllCookies()">Alle akzeptieren</button>
                         <button class="btn small outline" onclick="window.rejectNonEssential()">Nur notwendige</button>
-                        <button class="btn-link" onclick="window.toggleCookieView(true)">Einstellungen</button>
+                        <button class="btn-link" onclick="window.toggleCookieView(true)">Einstellungen anpassen</button>
                     </div>
                 </div>
             </div>
 
-            <!-- View 2: Settings -->
-            <div id="cookie-view-settings" style="display:none; padding:10px 0;">
+            <!-- View 2: Detaileinstellungen -->
+            <div id="cookie-view-settings" style="display:none;">
                 <div class="cookie-header">
-                    <i class="fas fa-cog" style="font-size:1.5rem;"></i>
-                    <h2 style="font-size:1.4rem; margin-top:10px;">Cookie-Einstellungen</h2>
+                    <i class="fas fa-sliders-h"></i>
+                    <h2>Cookie-Einstellungen</h2>
                 </div>
-                <div class="cookie-categories">
-                    <div class="cookie-cat-item">
-                        <div class="cat-info">
-                            <strong>Essenziell</strong>
-                            <span>Technisch notwendig für den Betrieb.</span>
-                        </div>
-                        <label class="switch disabled"><input type="checkbox" checked disabled><span class="slider round"></span></label>
-                    </div>
-                    <div class="cookie-cat-item">
-                        <div class="cat-info">
-                            <strong>Funktional</strong>
-                            <span>Speicherung von Präferenzen & Komfort.</span>
-                        </div>
-                        <label class="switch"><input type="checkbox" id="cookie-cat-func"><span class="slider round"></span></label>
-                    </div>
-                    <div class="cookie-cat-item">
-                        <div class="cat-info">
-                            <strong>Analyse</strong>
-                            <span>Besucherstatistik zur Verbesserung der Website.</span>
-                        </div>
-                        <label class="switch"><input type="checkbox" id="cookie-cat-anal"><span class="slider round"></span></label>
-                    </div>
-                </div>
+                <!-- Dynamisch befüllt durch cookie-consent.js anhand Server-Config -->
+                <div class="cookie-categories" id="cookie-categories-dynamic"></div>
                 <div class="cookie-actions">
                     <button class="btn small" onclick="window.saveCustomCookies()">Auswahl speichern</button>
-                    <button class="btn-text" onclick="window.toggleCookieView(false)">Zurück zur Übersicht</button>
+                    <button class="btn-text" onclick="window.toggleCookieView(false)">← Zurück</button>
                 </div>
             </div>
-            
+
             <div class="cookie-footer">
-                <a onclick="window.switchTab('legal'); window.setLegalView('privacy')">Datenschutz</a> • 
+                <a onclick="window.switchTab('legal'); window.setLegalView('privacy')">Datenschutz</a> &bull;
                 <a onclick="window.switchTab('legal'); window.setLegalView('impressum')">Impressum</a>
             </div>
         </div>
@@ -281,5 +271,7 @@
 
     <div id="vacation-modal" class="vacation-modal"></div>
     <script src="app.js"></script>
+    <!-- Cookie Consent Manager – nach app.js laden -->
+    <script src="cookie-consent.js"></script>
 </body>
 </html>
