@@ -55,7 +55,9 @@ if (dbType === 'mysql' || dbType === 'mariadb') {
             allergens TEXT DEFAULT '[]',
             additives TEXT DEFAULT '[]',
             image     TEXT,
-            active    INTEGER DEFAULT 1
+            active    INTEGER DEFAULT 1,
+            available INTEGER DEFAULT 1,
+            updated_at TEXT
         );
 
         CREATE TABLE IF NOT EXISTS categories (
@@ -113,6 +115,9 @@ if (dbType === 'mysql' || dbType === 'mariadb') {
         "ALTER TABLE users ADD COLUMN recovery_codes TEXT DEFAULT '[]'",
         "ALTER TABLE menu ADD COLUMN number TEXT",
         "ALTER TABLE menu ADD COLUMN active INTEGER DEFAULT 1",
+        "ALTER TABLE menu ADD COLUMN available INTEGER DEFAULT 1",
+        "ALTER TABLE menu ADD COLUMN updated_at TEXT",
+        "ALTER TABLE menu ADD COLUMN sort_order INTEGER DEFAULT 0",
         "ALTER TABLE orders ADD COLUMN table_id TEXT",
         "ALTER TABLE orders ADD COLUMN table_name TEXT",
         "ALTER TABLE orders ADD COLUMN status TEXT DEFAULT 'pending'",
@@ -149,13 +154,13 @@ if (dbType === 'mysql' || dbType === 'mariadb') {
         addUser:            db.prepare('INSERT OR REPLACE INTO users (user, pass, name, last_name, email, role, require_password_change, recovery_codes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'),
         updateUser:         db.prepare('UPDATE users SET name = ?, last_name = ?, email = ?, role = ? WHERE user = ?'),
         deleteUser:         db.prepare('DELETE FROM users WHERE user = ?'),
-        getMenu:            db.prepare('SELECT * FROM menu ORDER BY cat, name'),
+        getMenu:            db.prepare('SELECT * FROM menu ORDER BY cat, COALESCE(sort_order, 0), name'),
         getMenuById:        db.prepare('SELECT * FROM menu WHERE id = ?'),
-        addMenu:            db.prepare('INSERT INTO menu (id, number, name, price, cat, desc, allergens, additives, image, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'),
+        addMenu:            db.prepare('INSERT INTO menu (id, number, name, price, cat, desc, allergens, additives, image, active, available, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'),
         deleteMenu:         db.prepare('DELETE FROM menu WHERE id = ?'),
         deleteAllMenu:      db.prepare('DELETE FROM menu'),
-        upsertMenu:         db.prepare('INSERT OR REPLACE INTO menu (id, number, name, price, cat, desc, allergens, additives, image, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'),
-        updateMenuRow:      db.prepare('UPDATE menu SET number = ?, name = ?, price = ?, cat = ?, desc = ?, allergens = ?, additives = ?, image = ?, active = ? WHERE id = ?'),
+        upsertMenu:         db.prepare('INSERT OR REPLACE INTO menu (id, number, name, price, cat, desc, allergens, additives, image, active, available, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'),
+        updateMenuRow:      db.prepare('UPDATE menu SET number = ?, name = ?, price = ?, cat = ?, desc = ?, allergens = ?, additives = ?, image = ?, active = ?, available = ?, updated_at = ? WHERE id = ?'),
         getCategories:      db.prepare('SELECT * FROM categories ORDER BY sort_order ASC, label ASC'),
         getCategoryById:    db.prepare('SELECT * FROM categories WHERE id = ?'),
         addCategory:        db.prepare('INSERT INTO categories (id, label, icon, active, sort_order) VALUES (?, ?, ?, ?, ?)'),
@@ -197,10 +202,16 @@ if (dbType === 'mysql' || dbType === 'mariadb') {
         deleteUser: (user) => stmts.deleteUser.run(user),
         getMenu: () => {
             const rows = stmts.getMenu.all();
-            return rows.map(r => ({ ...r, active: Number(r.active) !== 0, allergens: safeJsonParse(r.allergens, []), additives: safeJsonParse(r.additives, []) }));
+            return rows.map(r => ({
+                ...r,
+                active: Number(r.active) !== 0,
+                available: r.available !== undefined ? Number(r.available) !== 0 : Number(r.active) !== 0,
+                allergens: safeJsonParse(r.allergens, []),
+                additives: safeJsonParse(r.additives, [])
+            }));
         },
         addMenu: (m) => {
-            stmts.addMenu.run(m.id, m.number||null, m.name, m.price, m.cat, m.desc, JSON.stringify(m.allergens||[]), JSON.stringify(m.additives||[]), m.image||null, m.active!==false?1:0);
+            stmts.addMenu.run(m.id, m.number||null, m.name, m.price, m.cat, m.desc, JSON.stringify(m.allergens||[]), JSON.stringify(m.additives||[]), m.image||null, m.active!==false?1:0, m.available!==false?1:0, m.updated_at||null);
         },
         updateMenu: (id, update) => {
             const existing = stmts.getMenuById.get(id);
@@ -208,15 +219,18 @@ if (dbType === 'mysql' || dbType === 'mariadb') {
             const merged = { ...existing, ...update,
                 allergens: safeJsonParse(typeof update.allergens!=='undefined'?JSON.stringify(update.allergens):existing.allergens,[]),
                 additives: safeJsonParse(typeof update.additives!=='undefined'?JSON.stringify(update.additives):existing.additives,[]) };
-            const activeVal = typeof update.active!=='undefined'?(update.active?1:0):Number(existing.active);
-            stmts.updateMenuRow.run(merged.number||null, merged.name, merged.price, merged.cat, merged.desc, JSON.stringify(merged.allergens), JSON.stringify(merged.additives), merged.image||null, activeVal, id);
-            return { ...merged, active: activeVal !== 0 };
+            const rawAvail = update.available !== undefined ? update.available : (update.active !== undefined ? update.active : null);
+            const activeVal = rawAvail !== null ? (rawAvail ? 1 : 0) : Number(existing.active);
+            const availVal = rawAvail !== null ? (rawAvail ? 1 : 0) : (existing.available !== undefined ? Number(existing.available) : Number(existing.active));
+            const updatedAt = update.updated_at || existing.updated_at || null;
+            stmts.updateMenuRow.run(merged.number||null, merged.name, merged.price, merged.cat, merged.desc, JSON.stringify(merged.allergens), JSON.stringify(merged.additives), merged.image||null, activeVal, availVal, updatedAt, id);
+            return { ...merged, active: activeVal !== 0, available: availVal !== 0, updated_at: updatedAt };
         },
         deleteMenu: (id) => stmts.deleteMenu.run(id),
         saveMenu: (items) => {
             db.transaction((list) => {
                 stmts.deleteAllMenu.run();
-                list.forEach(m => stmts.upsertMenu.run(m.id||Date.now().toString(), m.number||null, m.name, m.price, m.cat, m.desc, JSON.stringify(m.allergens||[]), JSON.stringify(m.additives||[]), m.image||null, m.active!==false?1:0));
+                list.forEach(m => stmts.upsertMenu.run(m.id||Date.now().toString(), m.number||null, m.name, m.price, m.cat, m.desc, JSON.stringify(m.allergens||[]), JSON.stringify(m.additives||[]), m.image||null, m.active!==false?1:0, m.available!==false?1:0, m.updated_at||null));
             })(items);
         },
         getCategories: () => stmts.getCategories.all(),

@@ -104,11 +104,45 @@ const Mailer = {
         if (!email) return;
 
         const transporter = await createTransporter(DB);
-        if (!transporter) return;
+        if (!transporter) return; // kein SMTP konfiguriert
 
         const from = await getSenderName(DB);
         const restaurantName = await getRestaurantName(DB);
         const isInquiry = status === 'Inquiry';
+
+        // Templates laden
+        const settings = await DB.getKV('settings', {});
+        const templates = settings.emailTemplates || {};
+        const tplKey = isInquiry ? 'tpl_inquiry' : 'tpl_confirmation';
+        const tpl = templates[tplKey] || {};
+
+        const data = { name, date, start_time, guests, restaurantName };
+
+        const subject = replacePlaceholders(tpl.subject || (isInquiry
+            ? `Warteliste / Anfrage bestätigt: {{date}}`
+            : `Reservierungsbestätigung – {{date}}`), data);
+
+        const defaultBody = isInquiry
+            ? `<h2 style="color: #2b6cb0;">Hallo {{name}}!</h2>
+               <p>Vielen Dank für Ihre Anfrage. Leider sind wir zum gewählten Zeitpunkt bereits ausgebucht, aber wir haben Sie auf unsere <strong>Warteliste</strong> gesetzt.</p>
+               <div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                   <p><strong>Datum:</strong> {{date}}</p>
+                   <p><strong>Uhrzeit:</strong> {{start_time}}</p>
+                   <p><strong>Personen:</strong> {{guests}}</p>
+                   <p><strong>Status:</strong> Warteliste (Anfrage)</p>
+               </div>
+               <p>Wir freuen uns auf Ihren Besuch!</p>`
+            : `<h2 style="color: #2b6cb0;">Hallo {{name}}!</h2>
+               <p>Ihre Reservierung wurde erfolgreich empfangen.</p>
+               <div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                   <p><strong>Datum:</strong> {{date}}</p>
+                   <p><strong>Uhrzeit:</strong> {{start_time}}</p>
+                   <p><strong>Personen:</strong> {{guests}}</p>
+                   <p><strong>Status:</strong> Eingegangen (Wartet auf Bestätigung)</p>
+               </div>
+               <p>Wir freuen uns auf Ihren Besuch!</p>`;
+
+        const bodyContent = replacePlaceholders(tpl.body || defaultBody, data);
 
         const settings = DB ? await DB.getKV('settings', {}) : {};
         const templates = settings.emailTemplates || {};
@@ -166,7 +200,8 @@ const Mailer = {
         const from = await getSenderName(DB);
         const restaurantName = await getRestaurantName(DB);
 
-        const settings = DB ? await DB.getKV('settings', {}) : {};
+        // Templates laden
+        const settings = await DB.getKV('settings', {});
         const templates = settings.emailTemplates || {};
         const isConfirmed = status === 'Confirmed';
         const tplKey = isConfirmed ? 'tpl_confirmed' : 'tpl_cancelled';
@@ -200,6 +235,7 @@ const Mailer = {
 
         const subject = replacePlaceholders(tpl.subject || defaultSubject, data);
         const bodyContent = replacePlaceholders(tpl.body || defaultBody, data);
+
         const html = `
             <div style="font-family: sans-serif; max-width: 600px; padding: 20px; border: 1px solid #eee; border-radius: 12px;">
                 ${bodyContent}
@@ -222,11 +258,13 @@ const Mailer = {
         const from = await getSenderName(DB);
         const restaurantName = await getRestaurantName(DB);
 
-        const settings = DB ? await DB.getKV('settings', {}) : {};
+        // Templates laden
+        const settings = await DB.getKV('settings', {});
         const templates = settings.emailTemplates || {};
         const tpl = templates['tpl_credentials'] || {};
 
         const data = { name, username, password: plainPassword, restaurantName };
+
         const defaultSubject = 'Ihre Zugangsdaten für das CMS';
         const defaultBody = `<h2 style="color: #2b6cb0;">Willkommen beim CMS</h2>
                             <p>Hallo {{name}},</p>
@@ -239,6 +277,7 @@ const Mailer = {
 
         const subject = replacePlaceholders(tpl.subject || defaultSubject, data);
         const bodyContent = replacePlaceholders(tpl.body || defaultBody, data);
+
         const html = `
             <div style="font-family: sans-serif; max-width: 600px; padding: 20px; border: 1px solid #eee; border-radius: 12px;">
                 ${bodyContent}
