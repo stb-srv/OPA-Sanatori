@@ -768,3 +768,15 @@ a { text-decoration:none; color:inherit; cursor:pointer; }
     }
 }
 
+/* ═══════════════════════════════════════
+   OPENING HOURS WIDGET
+   ═══════════════════════════════════════ */
+#oh-widget { transition: all .3s ease; }
+#oh-panel { animation: ohSlideUp .25s cubic-bezier(0.19,1,0.22,1); }
+@keyframes ohSlideUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+#oh-toggle-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(27,58,92,0.45) !important; transition: all .2s; }
+@media (max-width: 768px) {
+    #oh-widget { bottom: 80px; right: 16px; }
+    #oh-panel { width: 240px !important; }
+}
+

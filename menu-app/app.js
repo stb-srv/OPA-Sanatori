@@ -183,6 +183,56 @@ document.addEventListener('DOMContentLoaded', async () => {
         const wImg = document.getElementById('welcome-img');
         if (d.welcomeImage && wImg) { wImg.src = d.welcomeImage; wImg.style.display = 'block'; }
         else if (wImg) { wImg.src = d.bgImage || '/admin/assets/greek_bg.png'; }
+
+        // Öffnungszeiten-Widget befüllen
+        if (d.openingHours) {
+            const days = ['Mo','Di','Mi','Do','Fr','Sa','So'];
+            const labels = { Mo:'Montag', Di:'Dienstag', Mi:'Mittwoch', Do:'Donnerstag', Fr:'Freitag', Sa:'Samstag', So:'Sonntag' };
+            const todayKey = ['So','Mo','Di','Mi','Do','Fr','Sa'][new Date().getDay()];
+            const now = new Date();
+            const nowMins = now.getHours() * 60 + now.getMinutes();
+
+            const rows = document.getElementById('oh-rows');
+            const badge = document.getElementById('oh-status-badge');
+            if (rows) {
+                rows.innerHTML = days.map(day => {
+                    const entry = d.openingHours[day] || { closed: true };
+                    const isToday = day === todayKey;
+                    const timeStr = entry.closed ? 'Ruhetag' : `${entry.open} – ${entry.close} Uhr`;
+                    return `<div style="display:flex; justify-content:space-between; align-items:center; padding:8px 18px; ${isToday ? 'background:rgba(27,58,92,0.05); font-weight:700;' : ''}">
+                        <span style="font-size:.82rem; ${isToday ? 'color:var(--blue,#1B3A5C);' : 'color:#555;'}">${labels[day]}${isToday ? ' <span style="font-size:.65rem; background:var(--gold,#C8A96E); color:#fff; padding:1px 6px; border-radius:10px; margin-left:4px;">Heute</span>' : ''}</span>
+                        <span style="font-size:.8rem; ${entry.closed ? 'color:#aaa;' : 'color:#333;'}">${timeStr}</span>
+                    </div>`;
+                }).join('');
+            }
+
+            // Status-Badge: Offen / Schließt bald / Geschlossen
+            if (badge) {
+                const todayEntry = d.openingHours[todayKey];
+                if (!todayEntry || todayEntry.closed) {
+                    badge.textContent = 'Heute geschlossen';
+                    badge.style.opacity = '.7';
+                } else {
+                    const [oh, om] = todayEntry.open.split(':').map(Number);
+                    const [ch, cm] = todayEntry.close.split(':').map(Number);
+                    const openMins  = oh * 60 + om;
+                    const closeMins = ch * 60 + cm;
+                    if (nowMins >= openMins && nowMins < closeMins) {
+                        if (closeMins - nowMins <= 60) {
+                            badge.textContent = `Schließt ${todayEntry.close} Uhr`;
+                            badge.style.background = '#f59e0b';
+                        } else {
+                            badge.textContent = `Geöffnet bis ${todayEntry.close}`;
+                        }
+                    } else {
+                        badge.textContent = nowMins < openMins
+                            ? `Öffnet ${todayEntry.open} Uhr`
+                            : 'Heute geschlossen';
+                        badge.style.opacity = '.7';
+                    }
+                }
+            }
+        }
     }
 
     // --- NAVIGATION ---
