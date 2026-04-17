@@ -134,11 +134,11 @@ module.exports = (requireAuth, requireLicense) => {
         try {
             const reservations = await DB.getReservations();
             const r = findReservationByToken(reservations, req.params.token);
-            if (!r) return res.status(404).send(tokenResponsePage(DB, 'Link ungültig', 'Dieser Link ist ungültig oder bereits abgelaufen.', '#e53e3e', '❌'));
-            if (r.status === 'Cancelled') return res.send(tokenResponsePage(DB, 'Bereits storniert', 'Diese Reservierung wurde bereits storniert.', '#718096', 'ℹ️'));
+            if (!r) return res.status(404).send(await tokenResponsePage(DB, 'Link ungültig', 'Dieser Link ist ungültig oder bereits abgelaufen.', '#e53e3e', '❌'));
+            if (r.status === 'Cancelled') return res.send(await tokenResponsePage(DB, 'Bereits storniert', 'Diese Reservierung wurde bereits storniert.', '#718096', 'ℹ️'));
             const updated = await DB.updateReservation(r.id, { status: 'Cancelled' });
             if (updated) Mailer.sendStatusChange(updated, DB).catch(e => console.error(e));
-            res.send(tokenResponsePage(DB, 'Reservierung storniert', `Ihre Reservierung für den <strong>${r.date}</strong> um <strong>${r.start_time} Uhr</strong> wurde erfolgreich storniert.<br><br>Wir hoffen, Sie bald wieder begrüßen zu dürfen.`, '#e53e3e', '✅'));
+            res.send(await tokenResponsePage(DB, 'Reservierung storniert', `Ihre Reservierung für den <strong>${r.date}</strong> um <strong>${r.start_time} Uhr</strong> wurde erfolgreich storniert.<br><br>Wir hoffen, Sie bald wieder begrüßen zu dürfen.`, '#e53e3e', '✅'));
         } catch(e) { res.status(500).send('Interner Fehler.'); }
     });
 
@@ -146,11 +146,11 @@ module.exports = (requireAuth, requireLicense) => {
         try {
             const reservations = await DB.getReservations();
             const r = findReservationByToken(reservations, req.params.token);
-            if (!r) return res.status(404).send(tokenResponsePage(DB, 'Link ungültig', 'Dieser Link ist ungültig oder bereits abgelaufen.', '#e53e3e', '❌'));
-            if (r.status === 'Confirmed') return res.send(tokenResponsePage(DB, 'Bereits bestätigt', `Ihre Reservierung für den <strong>${r.date}</strong> um <strong>${r.start_time} Uhr</strong> ist bereits bestätigt. Wir freuen uns auf Ihren Besuch!`, '#38a169', '✅'));
+            if (!r) return res.status(404).send(await tokenResponsePage(DB, 'Link ungültig', 'Dieser Link ist ungültig oder bereits abgelaufen.', '#e53e3e', '❌'));
+            if (r.status === 'Confirmed') return res.send(await tokenResponsePage(DB, 'Bereits bestätigt', `Ihre Reservierung für den <strong>${r.date}</strong> um <strong>${r.start_time} Uhr</strong> ist bereits bestätigt. Wir freuen uns auf Ihren Besuch!`, '#38a169', '✅'));
             const updated = await DB.updateReservation(r.id, { status: 'Confirmed' });
             if (updated) Mailer.sendStatusChange(updated, DB).catch(e => console.error(e));
-            res.send(tokenResponsePage(DB, 'Reservierung bestätigt!', `Ihre Reservierung für den <strong>${r.date}</strong> um <strong>${r.start_time} Uhr</strong> für <strong>${r.guests} Person(en)</strong> ist jetzt bestätigt.<br><br>Wir freuen uns auf Ihren Besuch!`, '#38a169', '🎉'));
+            res.send(await tokenResponsePage(DB, 'Reservierung bestätigt!', `Ihre Reservierung für den <strong>${r.date}</strong> um <strong>${r.start_time} Uhr</strong> für <strong>${r.guests} Person(en)</strong> ist jetzt bestätigt.<br><br>Wir freuen uns auf Ihren Besuch!`, '#38a169', '🎉'));
         } catch(e) { res.status(500).send('Interner Fehler.'); }
     });
 

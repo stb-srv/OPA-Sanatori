@@ -140,7 +140,17 @@ module.exports = function cartRoutes(requireLicense, io) {
     // -------------------------------------------------------------------------
     router.get('/config', async (req, res) => {
         try {
-            const host     = req.headers['x-forwarded-host'] || req.headers.host || null;
+            const extractDomain = (req) => {
+                const forwarded = req.headers['x-forwarded-host'];
+                if (forwarded) return forwarded.split(',')[0].trim().split(':')[0];
+                const origin = req.headers['origin'];
+                if (origin) {
+                    try { return new URL(origin).hostname; } catch (_) {}
+                }
+                const host = req.headers.host || 'localhost';
+                return host.split(':')[0];
+            };
+            const host     = extractDomain(req);
             const license  = await getCurrentLicense(DB, host);
             const settings = await DB.getKV('settings', {});
 

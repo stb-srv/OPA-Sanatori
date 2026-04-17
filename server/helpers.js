@@ -42,10 +42,10 @@ const checkOverlap = (date, start1, end1, start2, end2, buffer = 15) => {
     return s1 < e2 && s2 < e1;
 };
 
-const findAvailableTables = (date, startTime, duration, guestCount, areaId = null) => {
-    const settings = DB.getKV('settings', {});
+const findAvailableTables = async (date, startTime, duration, guestCount, areaId = null) => {
+    const settings = await DB.getKV('settings', {});
     const rc = settings.reservationConfig || { buffer: 15 };
-    const homepage = DB.getKV('homepage', {});
+    const homepage = await DB.getKV('homepage', {});
     const oh = homepage.openingHours || {};
     const d = new Date(date.split('.').reverse().join('-'));
     const dayKey = ['So','Mo','Di','Mi','Do','Fr','Sa'][d.getDay()];
@@ -59,9 +59,9 @@ const findAvailableTables = (date, startTime, duration, guestCount, areaId = nul
             return { success: false, reason: `Reservierung außerhalb der Öffnungszeiten (${dayConfig.open} - ${dayConfig.close} Uhr).` };
     }
     const endTime = buildEndTime(startTime, duration);
-    const tables = DB.getTables() || [];
+    const tables = (await DB.getTables()) || [];
     let activeTables = tables.filter(t => t.active);
-    const plan = DB.getKV('table_plan', { combined: {} });
+    const plan = await DB.getKV('table_plan', { combined: {} });
     const combinedMapping = {}, parentMapping = {};
     Object.values(plan.combined || {}).forEach(areaCombos => {
         areaCombos.forEach(c => {
@@ -72,7 +72,7 @@ const findAvailableTables = (date, startTime, duration, guestCount, areaId = nul
     });
     if (areaId) activeTables = activeTables.filter(t => t.area_id === areaId);
     const blockedStatuses = ['Confirmed','Pending','Blocked','Inquiry'];
-    const existingReservations = (DB.getReservations() || []).filter(r =>
+    const existingReservations = ((await DB.getReservations()) || []).filter(r =>
         r.date === date && blockedStatuses.includes(r.status) && r.start_time && r.end_time
     );
     const unavailableTableIds = new Set();
@@ -97,8 +97,8 @@ const findAvailableTables = (date, startTime, duration, guestCount, areaId = nul
     return { success: false, reason: `Keine Kapazität im Bereich ${areaId || 'Gesamt'} verfügbar` };
 };
 
-const tokenResponsePage = (DB, title, message, color, emoji) => {
-    const branding = DB.getKV('branding', {});
+const tokenResponsePage = async (DB, title, message, color, emoji) => {
+    const branding = await DB.getKV('branding', {});
     const restaurantName = branding.name || 'Restaurant';
     const accentColor = branding.primaryColor || color;
     return `<!DOCTYPE html>
