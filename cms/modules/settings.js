@@ -6,6 +6,39 @@ import { apiGet, apiPost } from './api.js';
 import { showToast, showConfirm } from './utils.js';
 import { updateSidebarVisibility } from '../app.js';
 
+const MAIL_TYPES = [
+    {
+        key: 'tpl_confirmation',
+        label: 'Reservierungsbestätigung (Eingang)',
+        default_subject: 'Reservierungsbestätigung – {{date}}',
+        placeholders: ['name', 'date', 'start_time', 'guests', 'restaurantName']
+    },
+    {
+        key: 'tpl_confirmed',
+        label: 'Reservierung bestätigt',
+        default_subject: 'BESTÄTIGT: Ihr Tisch am {{date}}',
+        placeholders: ['name', 'date', 'start_time', 'restaurantName']
+    },
+    {
+        key: 'tpl_cancelled',
+        label: 'Reservierung storniert',
+        default_subject: 'ABSAGE: Ihre Reservierung am {{date}}',
+        placeholders: ['name', 'date', 'start_time', 'restaurantName']
+    },
+    {
+        key: 'tpl_inquiry',
+        label: 'Warteliste / Anfrage',
+        default_subject: 'Warteliste – Anfrage für {{date}}',
+        placeholders: ['name', 'date', 'start_time', 'guests', 'restaurantName']
+    },
+    {
+        key: 'tpl_credentials',
+        label: 'Zugangsdaten (neuer Nutzer)',
+        default_subject: 'Ihre Zugangsdaten für das CMS',
+        placeholders: ['name', 'username', 'password', 'restaurantName']
+    }
+];
+
 let settingsTab = 'license';
 
 export async function renderSettings(container, titleEl) {
@@ -390,6 +423,39 @@ function renderSettingsTab(settings, branding, users, licInfo) {
                     <div id="smtp-test-result" style="margin-top:10px;"></div>
                 </div>
             </div>
+
+            <div style="border-top:1px solid rgba(0,0,0,0.1); margin-top:30px; padding-top:30px;">
+                <h3 style="margin-bottom:20px;"><i class="fas fa-file-alt"></i> E-Mail Templates</h3>
+                <p style="color:var(--text-muted); font-size:.85rem; margin-bottom:24px;">
+                    Passen Sie Betreff und Inhalt der automatischen E-Mails an. Klicken Sie auf die Platzhalter-Chips, um sie an der Schreibmarke einzufügen.
+                </p>
+
+                ${MAIL_TYPES.map(type => {
+                    const tpl = (settings.emailTemplates || {})[type.key] || {};
+                    return `
+                    <div class="template-box" style="background:rgba(255,255,255,0.4); border:1px solid rgba(0,0,0,0.08); border-radius:12px; padding:20px; margin-bottom:20px;" data-tpl-key="${type.key}">
+                        <h4 style="margin:0 0 16px; color:var(--primary);">${type.label}</h4>
+                        <div class="form-group full">
+                            <label>Betreff</label>
+                            <input class="input-styled tpl-subject" value="${tpl.subject || ''}" placeholder="${type.default_subject}">
+                        </div>
+                        <div class="form-group full" style="margin-top:12px;">
+                            <label>E-Mail Text (HTML erlaubt)</label>
+                            <textarea class="input-styled tpl-body" rows="6" style="min-height:120px; resize:vertical; font-family:inherit;">${tpl.body || ''}</textarea>
+                        </div>
+                        <div style="margin-top:10px; display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:10px;">
+                            <div class="placeholder-chips">
+                                <span style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:6px;">Verfügbare Platzhalter:</span>
+                                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                                    ${type.placeholders.map(p => `<span class="placeholder-chip" style="cursor:pointer; background:rgba(0,0,0,0.05); padding:3px 8px; border-radius:12px; font-size:.72rem; border:1px solid rgba(0,0,0,0.1);" onclick="window.insertAtCursor(this, '{{${p}}}')">{{${p}}}</span>`).join('')}
+                                </div>
+                            </div>
+                            <button class="btn-secondary btn-sm btn-reset-tpl" style="padding:4px 10px; font-size:.75rem;"><i class="fas fa-undo"></i> Zurücksetzen</button>
+                        </div>
+                    </div>
+                    `;
+                }).join('')}
+            </div>
         `;
     }
 
@@ -578,6 +644,29 @@ function attachSettingsHandlers(container, settings, branding, users, licInfo, t
                 }
             };
         }
+
+        // Reset Template Buttons
+        container.querySelectorAll('.btn-reset-tpl').forEach(btn => {
+            btn.onclick = () => {
+                const box = btn.closest('.template-box');
+                const tplKey = box.dataset.tplKey;
+                const type = MAIL_TYPES.find(t => t.key === tplKey);
+                box.querySelector('.tpl-subject').value = '';
+                box.querySelector('.tpl-body').value = '';
+                showToast(`${type.label} wurde auf Standard zurückgesetzt (Speichern erforderlich)`);
+            };
+        });
+
+        window.insertAtCursor = (chip, text) => {
+            const box = chip.closest('.template-box');
+            const target = box.querySelector('.tpl-body:focus, .tpl-subject:focus') || box.querySelector('.tpl-body');
+            const start = target.selectionStart;
+            const end = target.selectionEnd;
+            const val = target.value;
+            target.value = val.substring(0, start) + text + val.substring(end);
+            target.selectionStart = target.selectionEnd = start + text.length;
+            target.focus();
+        };
     }
 
     // --- Speichern ---
@@ -663,9 +752,21 @@ function attachSettingsHandlers(container, settings, branding, users, licInfo, t
                     return;
                 }
                 s.smtp = smtpData;
+
+                // Templates sammeln
+                s.emailTemplates = {};
+                container.querySelectorAll('.template-box').forEach(box => {
+                    const key = box.dataset.tplKey;
+                    const subject = box.querySelector('.tpl-subject').value.trim();
+                    const body = box.querySelector('.tpl-body').value.trim();
+                    if (subject || body) {
+                        s.emailTemplates[key] = { subject, body };
+                    }
+                });
+
                 const r = await apiPost('settings', s);
                 if (r?.success) {
-                    showToast('SMTP-Einstellungen gespeichert! ✉️');
+                    showToast('Einstellungen gespeichert! ✉️');
                     renderSettings(container, titleEl);
                 } else {
                     showToast(r?.reason || 'Fehler beim Speichern.', 'error');
