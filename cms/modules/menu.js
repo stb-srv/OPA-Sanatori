@@ -1,5 +1,9 @@
 /**
  * Menu Management Module for OPA-CMS
+ * QoL Phase 1:
+ *  - Verfügbarkeits-Toggle direkt in der Gerichtsliste
+ *  - "Zuletzt bearbeitet" Anzeige pro Gericht
+ *  - Kategorien einklappen/ausklappen
  */
 
 import { apiGet, apiPost, apiUpload } from './api.js';
@@ -12,13 +16,27 @@ let cmsSearch = '';
 let cmsCatFilter = 'All';
 let cmsSort = 'name';
 let cmsPage = 1;
-let cmsPageSize = 25; // Standard: 25 Einträge pro Seite
+let cmsPageSize = 25;
+let collapsedCats = new Set(); // Eingeklappte Kategorien
 
 // --- Helpers ---
 const getCatLabel = (cat) => {
     if (!cat) return 'Unsortiert';
     if (typeof cat === 'object') return cat.label || cat.id || 'Unbekannt';
     return cat;
+};
+
+const formatRelativeTime = (isoString) => {
+    if (!isoString) return null;
+    const diff = Date.now() - new Date(isoString).getTime();
+    const min  = Math.floor(diff / 60000);
+    const h    = Math.floor(diff / 3600000);
+    const d    = Math.floor(diff / 86400000);
+    if (min < 1)  return 'Gerade eben';
+    if (min < 60) return `Vor ${min} Min.`;
+    if (h < 24)   return `Vor ${h} Std.`;
+    if (d < 7)    return `Vor ${d} Tag${d > 1 ? 'en' : ''}`;
+    return new Date(isoString).toLocaleDateString('de-DE', { day:'2-digit', month:'2-digit', year:'2-digit' });
 };
 
 // Global ESC listener (once)
@@ -91,14 +109,13 @@ function renderCurrentTab(tab, menu, categories, allergens, additives) {
 }
 
 function renderPagination(totalItems, currentPage, pageSize) {
-    if (pageSize === 0) return ''; // "Alle" – keine Pagination nötig
+    if (pageSize === 0) return '';
     const totalPages = Math.ceil(totalItems / pageSize);
     if (totalPages <= 1) return '';
 
     const start = (currentPage - 1) * pageSize + 1;
     const end   = Math.min(currentPage * pageSize, totalItems);
 
-    // Seitenzahlen berechnen: max 7 Buttons
     const pages = [];
     if (totalPages <= 7) {
         for (let i = 1; i <= totalPages; i++) pages.push(i);
@@ -110,7 +127,7 @@ function renderPagination(totalItems, currentPage, pageSize) {
         pages.push(totalPages);
     }
 
-    const btnBase = `display:inline-flex;align-items:center;justify-content:center;min-width:32px;height:32px;padding:0 6px;border-radius:7px;border:none;cursor:pointer;font-size:.82rem;font-weight:500;transition:background .15s;`;
+    const btnBase    = `display:inline-flex;align-items:center;justify-content:center;min-width:32px;height:32px;padding:0 6px;border-radius:7px;border:none;cursor:pointer;font-size:.82rem;font-weight:500;transition:background .15s;`;
     const btnNormal  = `${btnBase}background:rgba(0,0,0,0.05);color:var(--text);`;
     const btnActive  = `${btnBase}background:var(--accent,#1b3a5c);color:#fff;`;
     const btnDisable = `${btnBase}background:transparent;color:rgba(0,0,0,0.2);cursor:default;`;
@@ -136,6 +153,18 @@ function renderPagination(totalItems, currentPage, pageSize) {
     `;
 }
 
+// ─── Verfügbarkeits-Toggle Button HTML ───────────────────────────────────────
+function renderAvailabilityToggle(dish) {
+    const available = dish.available !== false; // Default: verfügbar
+    const bg    = available ? 'rgba(34,197,94,0.12)'  : 'rgba(239,68,68,0.12)';
+    const color = available ? '#16a34a'               : '#dc2626';
+    const icon  = available ? 'fa-check-circle'       : 'fa-times-circle';
+    const title = available ? 'Verfügbar – klicken zum Deaktivieren' : 'Nicht verfügbar – klicken zum Aktivieren';
+    return `<button title="${title}" onclick="window.toggleDishAvailability('${dish.id}', ${!available})" style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;border:none;cursor:pointer;background:${bg};color:${color};transition:all .15s;" onmouseover="this.style.opacity='0.75'" onmouseout="this.style.opacity='1'">
+        <i class="fas ${icon}" style="font-size:.75rem;"></i>
+    </button>`;
+}
+
 function renderDishesTab(menu, categories, allergens, additives) {
     const safeMenu       = Array.isArray(menu)       ? menu       : [];
     const safeCategories = Array.isArray(categories) ? categories : [];
@@ -155,12 +184,10 @@ function renderDishesTab(menu, categories, allergens, additives) {
             return a.name.localeCompare(b.name);
         });
 
-    // Pagination berechnen
-    const totalItems  = filtered.length;
-    const pageSize    = cmsPageSize; // 0 = alle
-    const totalPages  = pageSize > 0 ? Math.ceil(totalItems / pageSize) : 1;
-    // Seite clampen falls Filter die Gesamtzahl reduziert hat
-    const safePage    = Math.max(1, Math.min(cmsPage, totalPages));
+    const totalItems = filtered.length;
+    const pageSize   = cmsPageSize;
+    const totalPages = pageSize > 0 ? Math.ceil(totalItems / pageSize) : 1;
+    const safePage   = Math.max(1, Math.min(cmsPage, totalPages));
     if (safePage !== cmsPage) cmsPage = safePage;
 
     const paginated = pageSize > 0
@@ -189,6 +216,42 @@ function renderDishesTab(menu, categories, allergens, additives) {
         ? safeCategories.map(c => `<option value="${getCatLabel(c)}">${getCatLabel(c)}</option>`).join('')
         : cats.map(c => `<option value="${c}">${c}</option>`).join('');
 
+    // Gerichte nach Kategorie gruppieren für Einklapp-Funktion
+    const unavailableCount = safeMenu.filter(d => d.available === false).length;
+
+    // Gruppierte Ansicht aufbauen (nur wenn kein Such-/Kategoriefilter aktiv)
+    const useGroupedView = cmsCatFilter === 'All' && !cmsSearch && cmsSort === 'name';
+
+    let tableBody = '';
+    if (useGroupedView && paginated.length > 0) {
+        // Nach Kategorien gruppieren
+        const grouped = {};
+        paginated.forEach(d => {
+            const cat = getCatLabel(d.cat);
+            if (!grouped[cat]) grouped[cat] = [];
+            grouped[cat].push(d);
+        });
+        Object.entries(grouped).forEach(([cat, dishes]) => {
+            const isCollapsed = collapsedCats.has(cat);
+            const catId = cat.replace(/[^a-z0-9]/gi, '_');
+            tableBody += `
+                <tr class="cat-header-row" style="cursor:pointer;" onclick="window.toggleCatCollapse('${catId}', '${cat}')">
+                    <td colspan="7" style="background:rgba(27,58,92,0.06);padding:10px 16px;font-weight:700;font-size:.82rem;letter-spacing:.05em;text-transform:uppercase;color:var(--primary);border-radius:8px;">
+                        <div style="display:flex;align-items:center;justify-content:space-between;">
+                            <span><i class="fas fa-layer-group" style="margin-right:8px;opacity:.5;font-size:.75rem;"></i>${cat} <span style="font-weight:400;opacity:.5;font-size:.78rem;">(${dishes.length})</span></span>
+                            <i class="fas fa-chevron-${isCollapsed ? 'down' : 'up'}" style="font-size:.7rem;opacity:.4;transition:transform .2s;"></i>
+                        </div>
+                    </td>
+                </tr>
+            `;
+            if (!isCollapsed) {
+                dishes.forEach(d => { tableBody += renderDishRow(d); });
+            }
+        });
+    } else {
+        paginated.forEach(d => { tableBody += renderDishRow(d); });
+    }
+
     return `
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;gap:15px;flex-wrap:wrap;">
             <div style="display:flex;gap:10px;flex:1;min-width:300px;flex-wrap:wrap;">
@@ -211,6 +274,7 @@ function renderDishesTab(menu, categories, allergens, additives) {
                 </select>
             </div>
             <div style="display:flex;gap:10px;align-items:center;">
+                ${unavailableCount > 0 ? `<span style="font-size:.78rem;background:rgba(239,68,68,0.1);color:#dc2626;padding:5px 12px;border-radius:20px;"><i class="fas fa-times-circle" style="margin-right:5px;"></i>${unavailableCount} nicht verfügbar</span>` : ''}
                 <button class="btn-primary" id="toggle-dish-form" style="background:var(--accent);"><i class="fas fa-plus"></i> Neues Gericht</button>
                 <div style="display:flex;gap:4px;align-items:center;padding:0 5px;border-left:1px solid rgba(0,0,0,0.1);margin-left:5px;">
                     <button class="btn-primary" style="background:#4b5563; opacity:.8; padding:10px 15px;" id="btn-export-pdf"><i class="fas fa-file-pdf"></i> PDF</button>
@@ -260,43 +324,53 @@ function renderDishesTab(menu, categories, allergens, additives) {
                     <th>Name</th>
                     <th>Kategorie</th>
                     <th style="width:90px;">Preis</th>
-                    <th style="width:96px;">Aktionen</th>
+                    <th style="width:36px;" title="Verfügbarkeit"><i class="fas fa-check-circle" style="opacity:.5;"></i></th>
+                    <th style="width:110px;">Aktionen</th>
                 </tr>
             </thead>
             <tbody>
-                ${paginated.map(d => `
-                    <tr>
-                        <td style="font-weight:600;color:var(--primary);font-size:.85rem;">${d.number || '&mdash;'}</td>
-                        <td>
-                            ${d.image
-                                ? `<img src="${d.image}" style="width:36px;height:36px;object-fit:cover;border-radius:6px;display:block;">`
-                                : `<div style="width:36px;height:36px;border-radius:6px;background:rgba(0,0,0,0.06);display:flex;align-items:center;justify-content:center;"><i class="fas fa-utensils" style="font-size:.7rem;opacity:.35;"></i></div>`
-                            }
-                        </td>
-                        <td>
-                            <span style="font-weight:600;">${d.name}</span>
-                            ${d.desc ? `<br><span style="font-size:.78rem;opacity:.55;line-height:1.3;">${d.desc}</span>` : ''}
-                        </td>
-                        <td>
-                            <span style="font-size:.8rem;background:rgba(0,0,0,0.05);padding:3px 10px;border-radius:20px;white-space:nowrap;">${getCatLabel(d.cat)}</span>
-                        </td>
-                        <td style="font-weight:600;font-size:.9rem;">${parseFloat(d.price).toFixed(2)}&nbsp;&euro;</td>
-                        <td>
-                            <div style="display:flex;gap:5px;">
-                                <button title="Bearbeiten" onclick="window.editDish(${d._idx})" style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;border:none;cursor:pointer;background:rgba(59,130,246,0.12);color:#2563eb;transition:background .15s;" onmouseover="this.style.background='rgba(59,130,246,0.22)'" onmouseout="this.style.background='rgba(59,130,246,0.12)'">
-                                    <i class="fas fa-pen" style="font-size:.72rem;"></i>
-                                </button>
-                                <button title="L&ouml;schen" onclick="window.deleteDish(${d._idx})" style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;border:none;cursor:pointer;background:rgba(239,68,68,0.12);color:#dc2626;transition:background .15s;" onmouseover="this.style.background='rgba(239,68,68,0.22)'" onmouseout="this.style.background='rgba(239,68,68,0.12)'">
-                                    <i class="fas fa-trash" style="font-size:.72rem;"></i>
-                                </button>
-                            </div>
-                        </td>
-                    </tr>
-                `).join('')}
-                ${paginated.length === 0 ? `<tr><td colspan="6" style="text-align:center;opacity:.5;padding:40px;">Keine Gerichte vorhanden.</td></tr>` : ''}
+                ${tableBody}
+                ${paginated.length === 0 ? `<tr><td colspan="7" style="text-align:center;opacity:.5;padding:40px;">Keine Gerichte vorhanden.</td></tr>` : ''}
             </tbody>
         </table>
         ${renderPagination(totalItems, safePage, pageSize)}
+    `;
+}
+
+function renderDishRow(d) {
+    const available   = d.available !== false;
+    const rowOpacity  = available ? '1' : '0.45';
+    const updatedStr  = formatRelativeTime(d.updated_at || d.updatedAt || null);
+    return `
+        <tr style="opacity:${rowOpacity};transition:opacity .2s;">
+            <td style="font-weight:600;color:var(--primary);font-size:.85rem;">${d.number || '&mdash;'}</td>
+            <td>
+                ${d.image
+                    ? `<img src="${d.image}" style="width:36px;height:36px;object-fit:cover;border-radius:6px;display:block;">`
+                    : `<div style="width:36px;height:36px;border-radius:6px;background:rgba(0,0,0,0.06);display:flex;align-items:center;justify-content:center;"><i class="fas fa-utensils" style="font-size:.7rem;opacity:.35;"></i></div>`
+                }
+            </td>
+            <td>
+                <span style="font-weight:600;">${d.name}</span>
+                ${d.desc ? `<br><span style="font-size:.78rem;opacity:.55;line-height:1.3;">${d.desc}</span>` : ''}
+                ${updatedStr ? `<br><span style="font-size:.7rem;opacity:.35;" title="Zuletzt bearbeitet"><i class="fas fa-clock" style="margin-right:3px;"></i>${updatedStr}</span>` : ''}
+            </td>
+            <td>
+                <span style="font-size:.8rem;background:rgba(0,0,0,0.05);padding:3px 10px;border-radius:20px;white-space:nowrap;">${getCatLabel(d.cat)}</span>
+            </td>
+            <td style="font-weight:600;font-size:.9rem;">${parseFloat(d.price).toFixed(2)}&nbsp;&euro;</td>
+            <td>${renderAvailabilityToggle(d)}</td>
+            <td>
+                <div style="display:flex;gap:5px;">
+                    <button title="Bearbeiten" onclick="window.editDish(${d._idx})" style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;border:none;cursor:pointer;background:rgba(59,130,246,0.12);color:#2563eb;transition:background .15s;" onmouseover="this.style.background='rgba(59,130,246,0.22)'" onmouseout="this.style.background='rgba(59,130,246,0.12)'">
+                        <i class="fas fa-pen" style="font-size:.72rem;"></i>
+                    </button>
+                    <button title="L&ouml;schen" onclick="window.deleteDish(${d._idx})" style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;border:none;cursor:pointer;background:rgba(239,68,68,0.12);color:#dc2626;transition:background .15s;" onmouseover="this.style.background='rgba(239,68,68,0.22)'" onmouseout="this.style.background='rgba(239,68,68,0.12)'">
+                        <i class="fas fa-trash" style="font-size:.72rem;"></i>
+                    </button>
+                </div>
+            </td>
+        </tr>
     `;
 }
 
@@ -365,6 +439,34 @@ function attachMenuHandlers(container, menu, categories, allergens, additives, c
     window.cmsGoToPage = (page) => {
         cmsPage = page;
         renderMenu(container, document.getElementById('view-title'), 'dishes');
+    };
+
+    // ── Kategorie einklappen/ausklappen ──────────────────────────────────────
+    window.toggleCatCollapse = (catId, catLabel) => {
+        if (collapsedCats.has(catLabel)) {
+            collapsedCats.delete(catLabel);
+        } else {
+            collapsedCats.add(catLabel);
+        }
+        renderMenu(container, document.getElementById('view-title'), 'dishes');
+    };
+
+    // ── Verfügbarkeits-Toggle ────────────────────────────────────────────────
+    window.toggleDishAvailability = async (dishId, newAvailable) => {
+        const dish = safeMenu.find(d => d.id == dishId);
+        if (!dish) return;
+        const updated = { ...dish, available: newAvailable, updated_at: new Date().toISOString() };
+        const { apiPut } = await import('./api.js');
+        const res = await apiPut(`menu/${dishId}`, updated);
+        if (res?.success) {
+            // Optimistisches Update im Cache – kein Full-Reload
+            dish.available = newAvailable;
+            dish.updated_at = updated.updated_at;
+            renderMenu(container, document.getElementById('view-title'), 'dishes');
+            showToast(newAvailable ? '✅ Gericht ist jetzt verfügbar' : '⏸ Gericht als nicht verfügbar markiert');
+        } else {
+            showToast('Fehler beim Aktualisieren', 'error');
+        }
     };
 
     window.editDish = (idx) => {
@@ -498,7 +600,11 @@ function attachMenuHandlers(container, menu, categories, allergens, additives, c
             [...safeMenu].sort((a,b) => (getCatLabel(a.cat)).localeCompare(getCatLabel(b.cat))).forEach(d => {
                 const dCat = getCatLabel(d.cat);
                 if (dCat !== curCat) { curCat = dCat; data.push([{ content: curCat.toUpperCase(), colSpan: 3, styles: { fillColor: [27, 58, 92], textColor: 255, fontStyle: 'bold' } }]); }
-                data.push([d.number || '-', d.name + (d.desc ? '\n' + d.desc : ''), parseFloat(d.price).toFixed(2) + ' \u20ac']);
+                data.push([
+                    d.number || '-',
+                    d.name + (d.desc ? '\n' + d.desc : '') + (d.available === false ? ' [NICHT VERFÜGBAR]' : ''),
+                    parseFloat(d.price).toFixed(2) + ' \u20ac'
+                ]);
             });
             doc.autoTable({ startY: 40, head: [['Nr.', 'Gericht', 'Preis']], body: data, theme: 'striped', headStyles: { fillColor: [200, 169, 110] }, styles: { font: 'helvetica' } });
             doc.save('speisekarte.pdf');
@@ -556,7 +662,9 @@ function attachMenuHandlers(container, menu, categories, allergens, additives, c
                 desc:      (container.querySelector('#df-desc').value || '').trim(),
                 image:     container.querySelector('#df-img').value || null,
                 allergens: Array.from(container.querySelectorAll('.dish-allergen-cb:checked')).map(cb => cb.value),
-                additives: Array.from(container.querySelectorAll('.dish-additive-cb:checked')).map(cb => cb.value)
+                additives: Array.from(container.querySelectorAll('.dish-additive-cb:checked')).map(cb => cb.value),
+                available: editingDishIndex !== -1 ? (safeMenu[editingDishIndex].available !== false) : true,
+                updated_at: new Date().toISOString()
             };
             let res;
             if (editingDishIndex !== -1) {
