@@ -227,7 +227,8 @@ textarea.input-styled { resize:vertical; min-height:80px; }
     box-shadow: var(--glass-shadow);
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow: clip;  /* clip statt hidden: verhindert scroll aber bricht keinen pointer-events hit-test */
+    min-height: 0;
 }
 
 .content-header {
@@ -246,7 +247,7 @@ textarea.input-styled { resize:vertical; min-height:80px; }
     pointer-events: none;
     visibility: hidden;
 }
-.content-body { flex:1; overflow-y:auto; padding:36px; }
+.content-body { flex:1; overflow-y:auto; overflow-x:hidden; padding:36px; min-height:0; position:relative; z-index:1; }
 
 /* ═══ STATS GRID ═══ */
 .stats-grid {
