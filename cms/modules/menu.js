@@ -590,6 +590,7 @@ function attachMenuHandlers(container, menu, categories, allergens, additives, c
     };
 
     if (currentTab === 'dishes') {
+        try {
         const searchInput = container.querySelector('#cms-dish-search');
         if (searchInput) searchInput.oninput = (e) => { cmsSearch = e.target.value; cmsPage = 1; renderMenu(container, document.getElementById('view-title'), 'dishes'); };
 
@@ -629,6 +630,23 @@ function attachMenuHandlers(container, menu, categories, allergens, additives, c
 
         const pdfBtn = container.querySelector('#btn-export-pdf');
         if (pdfBtn) pdfBtn.onclick = async () => {
+            // jsPDF + autoTable lazy laden falls noch nicht vorhanden
+            if (!window.jspdf) {
+                await new Promise((res, rej) => {
+                    const s = document.createElement('script');
+                    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+                    s.onload = res; s.onerror = rej;
+                    document.head.appendChild(s);
+                });
+            }
+            if (!window.jspdf?.jsPDF?.prototype?.autoTable) {
+                await new Promise((res, rej) => {
+                    const s = document.createElement('script');
+                    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js';
+                    s.onload = res; s.onerror = rej;
+                    document.head.appendChild(s);
+                });
+            }
             const { jsPDF } = window.jspdf;
             if (!jsPDF) return showToast('jsPDF nicht geladen', 'error');
 
@@ -767,6 +785,9 @@ function attachMenuHandlers(container, menu, categories, allergens, additives, c
                 showToast(res?.reason || 'Fehler beim Speichern', 'error');
             }
         };
+        } catch(err) {
+            console.error('[menu.js] Handler-Fehler:', err);
+        }
     } else if (currentTab === 'categories') {
         const addCatBtn = container.querySelector('#add-cat-btn');
         if (addCatBtn) addCatBtn.onclick = async () => {
