@@ -58,7 +58,10 @@ async function initSchema() {
                 allergens LONGTEXT DEFAULT ('[]'),
                 additives LONGTEXT DEFAULT ('[]'),
                 image     TEXT,
-                active    TINYINT(1) DEFAULT 1
+                active    TINYINT(1) DEFAULT 1,
+                available TINYINT(1) DEFAULT 1,
+                updated_at VARCHAR(50),
+                sort_order INT DEFAULT 0
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         `);
         await conn.query(`
@@ -176,12 +179,18 @@ const DB = {
 
     // --- Menu ---
     getMenu: async () => {
-        const rows = await q('SELECT * FROM menu ORDER BY cat, name');
-        return rows.map(r => ({ ...r, active: Number(r.active) !== 0, allergens: safeJsonParse(r.allergens, []), additives: safeJsonParse(r.additives, []) }));
+        const rows = await q('SELECT * FROM menu ORDER BY cat, COALESCE(sort_order, 0), name');
+        return rows.map(r => ({
+            ...r,
+            active: Number(r.active) !== 0,
+            available: r.available !== undefined ? Number(r.available) !== 0 : Number(r.active) !== 0,
+            allergens: safeJsonParse(r.allergens, []),
+            additives: safeJsonParse(r.additives, [])
+        }));
     },
     addMenu: async (m) => {
-        await q('INSERT INTO menu (id, number, name, price, cat, `desc`, allergens, additives, image, active) VALUES (?,?,?,?,?,?,?,?,?,?)',
-            [m.id, m.number||null, m.name, m.price, m.cat, m.desc, JSON.stringify(m.allergens||[]), JSON.stringify(m.additives||[]), m.image||null, m.active!==false?1:0]);
+        await q('INSERT INTO menu (id, number, name, price, cat, `desc`, allergens, additives, image, active, available, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+            [m.id, m.number||null, m.name, m.price, m.cat, m.desc, JSON.stringify(m.allergens||[]), JSON.stringify(m.additives||[]), m.image||null, m.active!==false?1:0, m.available!==false?1:0, m.updated_at||null]);
     },
     updateMenu: async (id, update) => {
         const rows = await q('SELECT * FROM menu WHERE id = ?', [id]);
@@ -190,10 +199,13 @@ const DB = {
         const merged = { ...existing, ...update,
             allergens: safeJsonParse(typeof update.allergens!=='undefined'?JSON.stringify(update.allergens):existing.allergens,[]),
             additives: safeJsonParse(typeof update.additives!=='undefined'?JSON.stringify(update.additives):existing.additives,[]) };
-        const activeVal = typeof update.active!=='undefined'?(update.active?1:0):Number(existing.active);
-        await q('UPDATE menu SET number=?, name=?, price=?, cat=?, `desc`=?, allergens=?, additives=?, image=?, active=? WHERE id=?',
-            [merged.number||null, merged.name, merged.price, merged.cat, merged.desc, JSON.stringify(merged.allergens), JSON.stringify(merged.additives), merged.image||null, activeVal, id]);
-        return { ...merged, active: activeVal!==0 };
+        const rawAvail = update.available !== undefined ? update.available : (update.active !== undefined ? update.active : null);
+        const activeVal = rawAvail !== null ? (rawAvail ? 1 : 0) : Number(existing.active);
+        const availVal = rawAvail !== null ? (rawAvail ? 1 : 0) : (existing.available !== undefined ? Number(existing.available) : Number(existing.active));
+        const updatedAt = update.updated_at || existing.updated_at || null;
+        await q('UPDATE menu SET number=?, name=?, price=?, cat=?, `desc`=?, allergens=?, additives=?, image=?, active=?, available=?, updated_at=? WHERE id=?',
+            [merged.number||null, merged.name, merged.price, merged.cat, merged.desc, JSON.stringify(merged.allergens), JSON.stringify(merged.additives), merged.image||null, activeVal, availVal, updatedAt, id]);
+        return { ...merged, active: activeVal!==0, available: availVal!==0, updated_at: updatedAt };
     },
     deleteMenu: async (id) => q('DELETE FROM menu WHERE id = ?', [id]),
     saveMenu: async (items) => {
@@ -202,8 +214,8 @@ const DB = {
         try {
             await conn.query('DELETE FROM menu');
             for (const m of items) {
-                await conn.query('INSERT INTO menu (id, number, name, price, cat, `desc`, allergens, additives, image, active) VALUES (?,?,?,?,?,?,?,?,?,?)',
-                    [m.id||Date.now().toString(), m.number||null, m.name, m.price, m.cat, m.desc, JSON.stringify(m.allergens||[]), JSON.stringify(m.additives||[]), m.image||null, m.active!==false?1:0]);
+                await conn.query('INSERT INTO menu (id, number, name, price, cat, `desc`, allergens, additives, image, active, available, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+                    [m.id||Date.now().toString(), m.number||null, m.name, m.price, m.cat, m.desc, JSON.stringify(m.allergens||[]), JSON.stringify(m.additives||[]), m.image||null, m.active!==false?1:0, m.available!==false?1:0, m.updated_at||null]);
             }
             await conn.commit();
         } catch(e) { await conn.rollback(); throw e; } finally { conn.release(); }

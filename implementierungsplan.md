@@ -1,187 +1,213 @@
-📋 Implementierungsplan – OPA-Santorini CMS Phase 2
-Kontext & Regeln für den Agenten
-Dateipfad: cms/modules/menu.js (SHA: 378772ce08634e81e93d3dd26ee68916fb0d2093)
-Keine anderen Dateien anfassen. Kein Backend-Code ändern. Nur menu.js bearbeiten.
-Immer den kompletten Dateiinhalt pushen (kein Partial-Update).
-SHA muss beim Push korrekt angegeben werden – vorher mit get_file_contents den aktuellen SHA holen.
+🛠️ Bug-Fix Implementierungsplan – OPA-Santorini CMS
+Regeln für den Agenten
+Vor jedem Push: Aktuellen SHA der Datei mit get_file_contents holen
 
-Feature 1 – Drag & Drop Sortierung 🔀
-Was
-Gerichte innerhalb einer Kategorie per Drag & Drop umsortieren. Die neue Reihenfolge wird persistent per POST /api/menu/reorder gespeichert.
+Immer vollständigen Dateiinhalt pushen – kein Partial-Update
 
-Wie – Schritt für Schritt
-Schritt 1.1 – SortableJS lazy laden
-In attachMenuHandlers(), nach dem Render der Tabelle:
+Reihenfolge einhalten – die Fixes bauen aufeinander auf
 
-js
-async function initSortable(container, safeMenu) {
-if (!window.Sortable) {
-await new Promise((resolve, reject) => {
-const s = document.createElement('script');
-s.src = 'https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js';
-s.onload = resolve; s.onerror = reject;
-document.head.appendChild(s);
-});
-}
-// ... (siehe Schritt 1.2)
-}
-Schritt 1.2 – Sortable instanziieren
-Nur auf <tbody> der Tabelle, nur wenn cmsSort === 'name' und kein Filter aktiv:
+4 Dateien werden geändert, nichts anderes anfassen
 
-js
-const tbody = container.querySelector('.premium-table tbody');
-if (!tbody) return;
-new window.Sortable(tbody, {
-animation: 150,
-handle: '.drag-handle', // eigener Handle-Button
-filter: '.cat-header-row', // Kategorie-Zeilen NICHT ziehbar
-onEnd: async (evt) => {
-// IDs der Zeilen in neuer Reihenfolge auslesen
-// via apiPost('menu/reorder', { ids: [...] })
-// danach cachedMenuData.menu umsortieren + renderMenu()
-}
-});
-Schritt 1.3 – Drag-Handle in renderDishRow()
-Neue erste Spalte (vor NR):
+Fix-Paket 1 – Datenbank-Schema (server/database.js)
+SHA aktuell: de5539fbdd03e67a8d0f75e52a211bebb53e3c1e
 
-xml
+Änderung 1.1 – CREATE TABLE menu um 2 Spalten erweitern
+Im db.exec(...) Block die menu-Tabelle anpassen:
 
-<td class="drag-handle" style="cursor:grab;padding:0 8px;opacity:.3;">
-    <i class="fas fa-grip-vertical"></i>
-</td>
-Tabellen-Header um eine <th style="width:24px;"></th> erweitern. colspan aller cat-header-row-Zeilen auf 8 erhöhen.
+sql
+-- VORHER:
+image TEXT,
+active INTEGER DEFAULT 1
 
-Schritt 1.4 – Backend-Endpoint (einzige Backend-Änderung)
-In server/routes/menu.js nach dem PUT /menu/:id Block einfügen:
+-- NACHHER:
+image TEXT,
+active INTEGER DEFAULT 1,
+available INTEGER DEFAULT 1,
+updated_at TEXT
+Änderung 1.2 – Migrations-Array ergänzen
+Nach den bestehenden Migrations-Einträgen zwei neue hinzufügen:
 
 js
-router.post('/menu/reorder', requireAuth, async (req, res) => {
-try {
-const { ids } = req.body; // Array von Dish-IDs in neuer Reihenfolge
-if (!Array.isArray(ids)) return res.status(400).json({ success: false });
-const menu = await DB.getMenu();
-const reordered = ids.map(id => menu.find(d => String(d.id) === String(id))).filter(Boolean);
-// Nicht enthaltene Gerichte ans Ende hängen
-menu.forEach(d => { if (!ids.includes(String(d.id))) reordered.push(d); });
-await DB.saveMenu(reordered);
-res.json({ success: true });
-} catch(e) { res.status(500).json({ success: false, reason: e.message }); }
-});
-Schritt 1.5 – UI-Hinweis
-Wenn useGroupedView aktiv: kleiner Hinweis-Text unter dem Toolbar:
+"ALTER TABLE menu ADD COLUMN available INTEGER DEFAULT 1",
+"ALTER TABLE menu ADD COLUMN updated_at TEXT",
+"ALTER TABLE menu ADD COLUMN sort_order INTEGER DEFAULT 0",
+Änderung 1.3 – getMenu() Mapping fixen
+js
+// VORHER:
+return rows.map(r => ({ ...r, active: Number(r.active) !== 0, allergens: ..., additives: ... }));
 
+// NACHHER:
+return rows.map(r => ({
+...r,
+active: Number(r.active) !== 0,
+available: r.available !== undefined ? Number(r.available) !== 0 : Number(r.active) !== 0,
+allergens: safeJsonParse(r.allergens, []),
+additives: safeJsonParse(r.additives, [])
+}));
+Änderung 1.4 – addMenu() Statement erweitern
+js
+// VORHER:
+stmts.addMenu = db.prepare('INSERT INTO menu (id, number, name, price, cat, desc, allergens, additives, image, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+
+// addMenu() Aufruf:
+stmts.addMenu.run(m.id, m.number||null, m.name, m.price, m.cat, m.desc, ..., m.active!==false?1:0);
+
+// NACHHER – Statement:
+stmts.addMenu = db.prepare('INSERT INTO menu (id, number, name, price, cat, desc, allergens, additives, image, active, available, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+
+// addMenu() Aufruf:
+stmts.addMenu.run(m.id, m.number||null, m.name, m.price, m.cat, m.desc,
+JSON.stringify(m.allergens||[]), JSON.stringify(m.additives||[]),
+m.image||null,
+m.active !== false ? 1 : 0,
+m.available !== false ? 1 : 0,
+m.updated_at || null
+);
+Änderung 1.5 – updateMenuRow Statement + updateMenu() fixen
+js
+// VORHER Statement:
+stmts.updateMenuRow = db.prepare('UPDATE menu SET number=?, name=?, price=?, cat=?, desc=?, allergens=?, additives=?, image=?, active=? WHERE id=?');
+
+// NACHHER Statement:
+stmts.updateMenuRow = db.prepare('UPDATE menu SET number=?, name=?, price=?, cat=?, desc=?, allergens=?, additives=?, image=?, active=?, available=?, updated_at=? WHERE id=?');
+
+// updateMenu() activeVal Berechnung ersetzen:
+// VORHER:
+const activeVal = typeof update.active !== 'undefined' ? (update.active ? 1 : 0) : Number(existing.active);
+
+// NACHHER:
+const rawAvail = update.available !== undefined ? update.available : (update.active !== undefined ? update.active : null);
+const activeVal = rawAvail !== null ? (rawAvail ? 1 : 0) : Number(existing.active);
+const availVal = rawAvail !== null ? (rawAvail ? 1 : 0) : (existing.available !== undefined ? Number(existing.available) : Number(existing.active));
+const updatedAt = update.updated_at || existing.updated_at || null;
+
+// updateMenuRow.run() Aufruf erweitern:
+stmts.updateMenuRow.run(
+merged.number||null, merged.name, merged.price, merged.cat, merged.desc,
+JSON.stringify(merged.allergens), JSON.stringify(merged.additives),
+merged.image||null, activeVal, availVal, updatedAt, id
+);
+
+// Return-Wert:
+return { ...merged, active: activeVal !== 0, available: availVal !== 0, updated_at: updatedAt };
+Änderung 1.6 – upsertMenu Statement + saveMenu() fixen
+js
+// VORHER:
+stmts.upsertMenu = db.prepare('INSERT OR REPLACE INTO menu (id, number, name, price, cat, desc, allergens, additives, image, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+
+// NACHHER:
+stmts.upsertMenu = db.prepare('INSERT OR REPLACE INTO menu (id, number, name, price, cat, desc, allergens, additives, image, active, available, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+
+// saveMenu() forEach:
+stmts.upsertMenu.run(
+m.id||Date.now().toString(), m.number||null, m.name, m.price, m.cat, m.desc,
+JSON.stringify(m.allergens||[]), JSON.stringify(m.additives||[]),
+m.image||null,
+m.active !== false ? 1 : 0,
+m.available !== false ? 1 : 0,
+m.updated_at || null
+);
+Änderung 1.7 – getMenu SQL Sortierung
+sql
+-- VORHER:
+SELECT \* FROM menu ORDER BY cat, name
+
+-- NACHHER:
+SELECT \* FROM menu ORDER BY cat, COALESCE(sort_order, 0), name
+Fix-Paket 2 – MySQL-Adapter (server/database-mysql.js)
+SHA aktuell: b41347a475578cd67a66de8ebbd544341302337f
+
+Exakt dieselben Änderungen wie Paket 1, aber MySQL-Syntax:
+
+Änderung 2.1 – CREATE TABLE menu erweitern
+sql
+-- nach `active TINYINT(1) DEFAULT 1` einfügen:
+available TINYINT(1) DEFAULT 1,
+updated_at VARCHAR(50),
+sort_order INT DEFAULT 0
+Änderung 2.2 – getMenu() Mapping (identisch mit 1.3)
+Änderung 2.3 – addMenu() Query + Parameter erweitern
+js
+// VORHER:
+'INSERT INTO menu (id, number, name, price, cat, `desc`, allergens, additives, image, active) VALUES (?,?,?,?,?,?,?,?,?,?)'
+// 10 Params
+
+// NACHHER:
+'INSERT INTO menu (id, number, name, price, cat, `desc`, allergens, additives, image, active, available, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)'
+// + m.available !== false ? 1 : 0, m.updated_at || null
+Änderung 2.4 – updateMenu() (identische Logik wie 1.5, MySQL-Query)
+js
+// VORHER:
+'UPDATE menu SET number=?, name=?, price=?, cat=?, `desc`=?, allergens=?, additives=?, image=?, active=? WHERE id=?'
+
+// NACHHER:
+'UPDATE menu SET number=?, name=?, price=?, cat=?, `desc`=?, allergens=?, additives=?, image=?, active=?, available=?, updated_at=? WHERE id=?'
+// + availVal, updatedAt in Params
+Änderung 2.5 – saveMenu() INSERT erweitern (identisch mit 2.3)
+Änderung 2.6 – getMenu SQL Sortierung
+sql
+-- VORHER:
+SELECT _ FROM menu ORDER BY cat, name
+-- NACHHER:
+SELECT _ FROM menu ORDER BY cat, COALESCE(sort_order, 0), name
+Fix-Paket 3 – Settings Route (server/routes/settings.js)
+SHA aktuell: 494b16a6856dae9cf6b6fce962a5cefb97d0ba84
+
+Änderung 3.1 – POST /license/modules ohne Lizenz erlauben
+js
+// VORHER:
+if (!settings.license) return res.status(400).json({ success: false, reason: 'Keine Lizenz aktiv.' });
+settings.license.modules = { ...settings.license.modules, ...modules };
+
+// NACHHER:
+if (!settings.license) settings.license = {};
+settings.license.modules = { ...(settings.license.modules || {}), ...modules };
+Fix-Paket 4 – CMS Settings Frontend (cms/modules/settings.js)
+SHA aktuell: 259ace5e0615eef908d3a429a43c7208a9c615fa
+
+Änderung 4.1 – Race Condition beim Speichern beheben
+Im btnSaveModules.onclick Handler:
+
+js
+// VORHER:
+apiPost('settings', {
+...settings, // ← ganzes altes settings-Objekt → Race Condition
+activeModules: { orders: ..., reservations: ... }
+})
+
+// NACHHER:
+apiPost('settings', {
+activeModules: { // ← nur activeModules senden, deepMerge im Backend erledigt den Rest
+orders: container.querySelector('#v-orders')?.checked ?? true,
+reservations: container.querySelector('#v-res')?.checked ?? true
+}
+})
+Commit-Nachricht
 text
-<span style="font-size:.75rem;opacity:.4;"><i class="fas fa-grip-vertical"></i> Zeilen ziehen zum Sortieren</span>
-Wenn Filter/Suche aktiv: Hinweis ausblenden + Sortable nicht initialisieren.
+fix: available/updated_at DB-Felder, license/modules ohne Lizenz, settings race condition
 
-Feature 2 – Verbesserter PDF-Export 📄
-Was
-Das bestehende btn-export-pdf ersetzt durch ein deutlich schöneres, zweispaltiges PDF mit:
+- database.js + database-mysql.js: Spalten available, updated_at, sort_order zur
+  menu-Tabelle hinzugefügt (Migration idempotent); updateMenu/addMenu/saveMenu
+  schreiben jetzt available und updated_at korrekt; getMenu() mapped available aus
+  active als Fallback; ORDER BY berücksichtigt sort_order
+- routes/settings.js: POST /license/modules schlägt nicht mehr fehl wenn
+  settings.license noch nicht existiert (frischer Install / Trial)
+- cms/modules/settings.js: beim Speichern der CMS-Sichtbarkeit wird nur
+  activeModules gesendet statt des kompletten settings-Objekts (verhindert
+  Race Condition mit deepMerge)
 
-Restaurant-Logo (falls branding.logo vorhanden)
+Fixes: BUG-1, BUG-2, BUG-3, BUG-6, BUG-7
+✅ Checkliste für den Agenten
+SHA von server/database.js holen → vollständig pushen
 
-Kategorie-Überschriften als farbige Trennzeilen
+SHA von server/database-mysql.js holen → vollständig pushen
 
-Allergene/Zusatzstoffe als kleine Codes hinter dem Namen
+SHA von server/routes/settings.js holen → vollständig pushen
 
-Nicht-verfügbare Gerichte ausblenden (oder optional als durchgestrichen)
+SHA von cms/modules/settings.js holen → vollständig pushen
 
-Fußzeile mit Datum und „Powered by OPA!"
+Alle 4 Pushes in einem einzigen push_files-Call zusammenfassen
 
-Wie – Schritt für Schritt
-Schritt 2.1 – PDF-Button erweitern
-Den bestehenden pdfBtn.onclick Handler vollständig ersetzen:
+Commit-Nachricht wie oben verwenden
 
-js
-pdfBtn.onclick = async () => {
-const { jsPDF } = window.jspdf;
-if (!jsPDF) return showToast('jsPDF nicht geladen', 'error');
-
-    // Branding holen
-    const branding = await apiGet('branding').catch(() => ({}));
-    const resName  = branding?.name || document.getElementById('disp-res-name')?.textContent || 'Speisekarte';
-    const today    = new Date().toLocaleDateString('de-DE', { day:'2-digit', month:'2-digit', year:'numeric' });
-
-    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-    const PW  = doc.internal.pageSize.getWidth();
-
-    // Header
-    doc.setFillColor(27, 58, 92);
-    doc.rect(0, 0, PW, 28, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(20); doc.setFont('helvetica', 'bold');
-    doc.text(resName.toUpperCase(), 14, 13);
-    doc.setFontSize(9); doc.setFont('helvetica', 'normal');
-    doc.setTextColor(200, 169, 110);
-    doc.text('SPEISEKARTE', 14, 21);
-    doc.setTextColor(255,255,255);
-    doc.text(`Stand: ${today}`, PW - 14, 21, { align: 'right' });
-
-    // Nur verfügbare Gerichte
-    const availableMenu = [...safeMenu]
-        .filter(d => d.available !== false)
-        .sort((a, b) => getCatLabel(a.cat).localeCompare(getCatLabel(b.cat)));
-
-    // Tabellendaten aufbauen
-    const body = [];
-    let curCat = '';
-    availableMenu.forEach(d => {
-        const cat = getCatLabel(d.cat);
-        if (cat !== curCat) {
-            curCat = cat;
-            body.push([{
-                content: cat.toUpperCase(),
-                colSpan: 3,
-                styles: { fillColor: [200,169,110], textColor: [255,255,255], fontStyle: 'bold', fontSize: 8 }
-            }]);
-        }
-        const codes = [
-            ...(d.allergens || []),
-            ...(d.additives || [])
-        ].join(', ');
-        body.push([
-            { content: d.number || '–', styles: { halign: 'center', fontSize: 8 } },
-            { content: d.name + (d.desc ? `\n${d.desc}` : '') + (codes ? `\n(${codes})` : ''), styles: { fontSize: 8 } },
-            { content: `${parseFloat(d.price).toFixed(2)} €`, styles: { halign: 'right', fontStyle: 'bold', fontSize: 9 } }
-        ]);
-    });
-
-    doc.autoTable({
-        startY: 34,
-        head: [['Nr.', 'Gericht', 'Preis']],
-        body,
-        theme: 'striped',
-        headStyles: { fillColor: [27, 58, 92], textColor: 255, fontStyle: 'bold', fontSize: 8 },
-        columnStyles: { 0: { cellWidth: 14 }, 2: { cellWidth: 22 } },
-        styles: { font: 'helvetica', cellPadding: 3, overflow: 'linebreak' },
-        margin: { left: 14, right: 14 },
-        didDrawPage: (data) => {
-            // Fußzeile auf jeder Seite
-            const pageH = doc.internal.pageSize.getHeight();
-            doc.setFontSize(7); doc.setTextColor(150);
-            doc.text(`Seite ${data.pageNumber}`, 14, pageH - 8);
-            doc.text('Powered by OPA! Restaurant System', PW - 14, pageH - 8, { align: 'right' });
-        }
-    });
-
-    doc.save(`speisekarte_${today.replace(/\./g,'-')}.pdf`);
-
-};
-Zusammenfassung – Was der Agent pushen muss
-Datei Änderung
-cms/modules/menu.js SortableJS lazy load + Handle-Spalte + onEnd-Handler + neuer PDF-Handler
-server/routes/menu.js Neuer POST /menu/reorder Endpoint
-Kritische Regeln
-✅ Aktuellen SHA von beiden Dateien vor dem Push abfragen
-
-✅ Beide Dateien als vollständigen Inhalt pushen (kein Diff)
-
-✅ filter: '.cat-header-row' in Sortable setzen – sonst sind Kategoriezeilen versehentlich ziehbar
-
-✅ Sortable nur initialisieren wenn useGroupedView === true (kein Filter, kein Suchbegriff, Sort = Name)
-
-✅ Nach onEnd: zuerst Cache aktualisieren, dann renderMenu() – nicht forceRefresh: true (würde API neu laden und Reihenfolge überschreiben)
-
-❌ Keine anderen Dateien anfassen
-
-❌ Kein npm install – SortableJS kommt via CDN
+Keine anderen Dateien ändern
