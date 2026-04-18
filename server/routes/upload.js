@@ -60,7 +60,7 @@ module.exports = (requireAuth, UPLOADS_DIR) => {
     router.delete('/:filename', requireAuth, (req, res) => {
         const fp = path.join(UPLOADS_DIR, path.basename(req.params.filename));
         if (fs.existsSync(fp)) { fs.unlinkSync(fp); return res.json({ success: true }); }
-        res.status(404).json({ success: false });
+        res.status(404).json({ success: false, reason: 'Datei nicht gefunden.' });
     });
 
     return router;
