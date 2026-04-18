@@ -369,6 +369,15 @@ window.deleteRes = async (id) => {
     }
 };
 
+function escVal(str) {
+    return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
 window.editRes = async (id) => {
     const resRaw = await apiGet('reservations') || [];
     const res = resRaw.find(r => r.id === id);
@@ -384,12 +393,12 @@ window.editRes = async (id) => {
             </div>
             
             <div class="form-grid">
-                <div class="form-group"><label>Name</label><input type="text" id="er-name" class="input-styled" value="${res.name}"></div>
-                <div class="form-group"><label>Personen</label><input type="number" id="er-guests" class="input-styled" value="${res.guests}"></div>
-                <div class="form-group"><label>Datum</label><input type="text" id="er-date" class="input-styled" value="${res.date}" placeholder="DD.MM.YYYY"></div>
-                <div class="form-group"><label>Uhrzeit</label><input type="text" id="er-time" class="input-styled" value="${res.start_time}" placeholder="HH:mm"></div>
-                <div class="form-group full"><label>E-Mail</label><input type="email" id="er-email" class="input-styled" value="${res.email}"></div>
-                <div class="form-group full"><label>Notizen</label><textarea id="er-note" class="input-styled" style="height:100px;">${res.note || ''}</textarea></div>
+                <div class="form-group"><label>Name</label><input type="text" id="er-name" class="input-styled" value="${escVal(res.name)}"></div>
+                <div class="form-group"><label>Personen</label><input type="number" id="er-guests" class="input-styled" value="${escVal(res.guests)}"></div>
+                <div class="form-group"><label>Datum</label><input type="text" id="er-date" class="input-styled" value="${escVal(res.date)}" placeholder="DD.MM.YYYY"></div>
+                <div class="form-group"><label>Uhrzeit</label><input type="text" id="er-time" class="input-styled" value="${escVal(res.start_time)}" placeholder="HH:mm"></div>
+                <div class="form-group full"><label>E-Mail</label><input type="email" id="er-email" class="input-styled" value="${escVal(res.email)}"></div>
+                <div class="form-group full"><label>Notizen</label><textarea id="er-note" class="input-styled" style="height:100px;">${escVal(res.note || '')}</textarea></div>
             </div>
 
             <div class="modal-actions" style="margin-top:30px; display:flex; justify-content:flex-end; gap:12px;">
