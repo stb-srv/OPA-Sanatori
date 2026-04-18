@@ -239,6 +239,41 @@ setInterval(async () => {
     } catch (e) { console.error('Trial cleanup error:', e.message); }
 }, 60 * 60 * 1000);
 
+// --- Reservation Reminder Job (24h before at 10:00 AM) ---
+const checkReminders = async () => {
+    try {
+        const now = new Date();
+        // Nur um 10 Uhr morgens prüfen
+        if (now.getHours() !== 10) return;
+        
+        const reservations = await DB.getReservations();
+        const tomorrow = new Date(now);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const tomorrowStr = `${String(tomorrow.getDate()).padStart(2,'0')}.${String(tomorrow.getMonth()+1).padStart(2,'0')}.${tomorrow.getFullYear()}`;
+        
+        const toRemind = reservations.filter(r => 
+            r.date === tomorrowStr && 
+            r.status === 'Confirmed' && 
+            r.email &&
+            !r.reminderSent
+        );
+        
+        for (const r of toRemind) {
+            try {
+                await Mailer.sendReminder(r, DB);
+                await DB.updateReservation(r.id, { reminderSent: true });
+                console.log(`📧 Erinnerung gesendet: ${r.name} (${r.date})`);
+            } catch (mailErr) {
+                console.error(`❌ Fehler beim Senden der Erinnerung an ${r.name}:`, mailErr.message);
+            }
+        }
+    } catch(e) { console.error('Reminder-Check Fehler:', e.message); }
+};
+
+setInterval(checkReminders, 60 * 60 * 1000); // Stündlich prüfen
+checkReminders(); // Einmal beim Start
+
+
 // =============================================================================
 // Bootstrap: async Start (Plugin-Loader + Server-Listen)
 // =============================================================================

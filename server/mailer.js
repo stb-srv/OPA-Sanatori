@@ -276,6 +276,37 @@ const Mailer = {
                 </div>
             `
         });
+    },
+
+    /**
+     * Automatische Erinnerungs-E-Mail (24h vorher)
+     */
+    sendReminder: async (reservation, DB = null) => {
+        const { name, email, date, start_time, guests } = reservation;
+        if (!email) return;
+
+        const transporter = await createTransporter(DB);
+        if (!transporter) return;
+
+        const from = await getSenderName(DB);
+        const restaurantName = await getRestaurantName(DB);
+        const subject = `Erinnerung: Ihre Reservierung morgen – ${restaurantName}`;
+        
+        const html = `
+            <div style="font-family: sans-serif; max-width: 600px; padding: 20px; border: 1px solid #eee; border-radius: 12px;">
+                <p>Hallo ${name},</p>
+                <p>wir möchten Sie an Ihre Reservierung erinnern:</p>
+                <ul style="list-style: none; padding: 0;">
+                    <li><strong>Datum:</strong> ${date}</li>
+                    <li><strong>Uhrzeit:</strong> ${start_time} Uhr</li>
+                    <li><strong>Personen:</strong> ${guests}</li>
+                </ul>
+                <p>Bei Fragen oder falls Sie stornieren möchten, antworten Sie einfach auf diese E-Mail.</p>
+                <p>Wir freuen uns auf Ihren Besuch!<br>${restaurantName}</p>
+            </div>
+        `;
+
+        await sendWithRetry(transporter, { from, to: email, subject, html });
     }
 };
 
