@@ -15,6 +15,7 @@ import { renderSettings } from './modules/settings.js';
 import { renderOpeningHours } from './modules/opening.js';
 import { renderOrders } from './modules/orders.js';
 import { initOrderSettings } from './modules/order-settings.js';
+import { renderBackup } from './modules/backup.js';
 
 const loginContainer    = document.getElementById('login-container');
 const adminDashboard    = document.getElementById('admin-dashboard');
@@ -205,6 +206,9 @@ async function switchView(view, tab = null) {
                 { get: (path) => apiGet(path), post: (path, body) => import('./modules/api.js').then(m => m.apiPost(path, body)) },
                 await apiGet('license/info')
             );
+            break;
+        case 'backup':
+            await renderBackup(contentView, viewTitle);
             break;
         case 'plugins-manager':
             contentView.innerHTML = `

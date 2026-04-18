@@ -13,6 +13,8 @@ const path    = require('path');
 const crypto  = require('crypto');
 const bcrypt  = require('bcryptjs');
 const jwt     = require('jsonwebtoken');
+const multer  = require('multer');
+const upload  = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
 const CONFIG  = require('./config.js');
 const DB      = require('./server/database.js');
@@ -128,8 +130,13 @@ app.use('/api',              require('./server/routes/settings.js')(requireAuth,
 app.use('/api/upload',       require('./server/routes/upload.js')(requireAuth, UPLOADS_DIR));
 // Cookie Consent API (DSGVO)
 app.use('/api',              require('./server/routes/cookie.js')(requireAuth));
-// Cart & Online-Orders (Warenkorb öffentlich, Bestellung ab PRO_PLUS)
 app.use('/api/cart',         require('./server/routes/cart.js')(requireLicense, io));
+
+// Global Backup & Restore
+const backupRouter = require('./server/routes/backup.js')(requireAuth);
+app.get('/api/backup/export', backupRouter);
+app.get('/api/backup/info', backupRouter);
+app.post('/api/backup/import', upload.single('backup'), backupRouter);
 
 // --- Plugins ---
 const getInstalledPlugins = () => {
