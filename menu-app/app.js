@@ -114,6 +114,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         };
 
         const m = await get('menu');
+        const cats = await get('categories');
+        if (cats && Array.isArray(cats)) { window.OPA_CATEGORIES = cats; }
+
         if (m && Array.isArray(m)) {
             menuItems = m;
             renderCategories();
@@ -271,10 +274,32 @@ document.addEventListener('DOMContentLoaded', async () => {
     function renderCategories() {
         const c = document.getElementById('categories');
         if (!c) return;
-        const cats = ['Alle', ...new Set(menuItems.map(i => i.cat))];
-        c.innerHTML = cats.map(cat =>
-            `<button class="cat-btn ${cat === 'Alle' ? 'active' : ''}" onclick="window.filterMenu('${cat}', this)">${cat}</button>`
-        ).join('');
+        const dbCats = window.OPA_CATEGORIES || [];
+
+        // "Alle"-Button immer zuerst
+        const allBtn = `<button class="cat-btn active" onclick="window.filterMenu('Alle', this)">
+            <i class="fas fa-th-large"></i> Alle
+        </button>`;
+
+        // Nur Kategorien anzeigen die aktiv sind UND mindestens ein aktives+verfügbares Gericht haben
+        const usedCats = new Set(
+            menuItems
+                .filter(i => i.active !== false && i.available !== false)
+                .map(i => i.cat)
+        );
+
+        const catBtns = dbCats
+            .filter(cat => cat.active !== false && usedCats.has(cat.label))
+            .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+            .map(cat => {
+                const iconHtml = cat.icon ? `<i class="${cat.icon}"></i> ` : '';
+                return `<button class="cat-btn" onclick="window.filterMenu('${cat.label}', this)">
+                    ${iconHtml}${cat.label}
+                </button>`;
+            }).join('');
+
+        c.innerHTML = allBtn + catBtns;
+
         const searchInput = document.getElementById('menu-search');
         if (searchInput) {
             searchInput.addEventListener('input', (e) => {
@@ -292,7 +317,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     function applyMenuFilter() {
-        let items = activeCat === 'all' ? menuItems : menuItems.filter(i => i.cat === activeCat);
+        // Nur aktive UND verfügbare Gerichte anzeigen
+        let items = menuItems.filter(i => i.active !== false && i.available !== false);
+        if (activeCat !== 'all') items = items.filter(i => i.cat === activeCat);
         if (searchQuery) {
             items = items.filter(i =>
                 i.name.toLowerCase().includes(searchQuery) ||
