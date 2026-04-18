@@ -43,11 +43,32 @@ export async function renderOrders(container, titleEl) {
 }
 
 function renderOrderCards() {
-    return orders.map(o => `
+    return orders.map(o => {
+        const typeLabel = {
+            dine_in:  { label: 'Tisch ' + (o.tableNumber || o.table || '?'), color: '#3b82f6', icon: 'fa-utensils' },
+            pickup:   { label: 'Abholung' + (o.pickupTime ? ' ' + o.pickupTime : ''), color: '#f59e0b', icon: 'fa-shopping-bag' },
+            delivery: { label: 'Lieferung', color: '#10b981', icon: 'fa-motorcycle' }
+        }[o.type] || { label: o.type || '?', color: '#6b7280', icon: 'fa-question' };
+
+        return `
         <div class="order-card ${o.status === 'ready' ? 'completed' : ''}" data-id="${o.id}">
             <div class="order-header">
-                <div><strong>Tisch ${o.table || 'N/A'}</strong></div>
-                <div class="order-time">${new Date(o.createdAt || o.timestamp).toLocaleTimeString('de-DE', {hour: '2-digit', minute:'2-digit'})}</div>
+                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                    <div>
+                        <strong>${typeLabel.label}</strong>
+                        <div style="
+                            display:inline-flex; align-items:center; gap:5px;
+                            background:${typeLabel.color}22; color:${typeLabel.color};
+                            border:1px solid ${typeLabel.color}44;
+                            padding:2px 8px; border-radius:20px;
+                            font-size:.68rem; font-weight:700; margin-top:4px; margin-left:8px;
+                        ">
+                            <i class="fas ${typeLabel.icon}" style="font-size:.65rem;"></i>
+                            ${o.type || 'Unbekannt'}
+                        </div>
+                    </div>
+                    <div class="order-time">${new Date(o.createdAt || o.timestamp).toLocaleTimeString('de-DE', {hour: '2-digit', minute:'2-digit'})}</div>
+                </div>
             </div>
             <div class="order-items">
                 ${o.items.map(i => `
@@ -57,14 +78,19 @@ function renderOrderCards() {
                         ${i.note ? `<br><small class="item-note">${i.note}</small>` : ''}
                     </div>
                 `).join('')}
+                
+                ${o.guestNote ? `
+                    <div style="margin-top:12px; padding:10px; background:#fef9c3; border-radius:8px; font-size:.78rem; color:#854d0e; border-left:4px solid #facc15;">
+                        <i class="fas fa-sticky-note" style="margin-right:5px; opacity:.7;"></i><strong>Notiz vom Gast:</strong><br>${o.guestNote}
+                    </div>` : ''}
             </div>
             <div class="order-footer">
                 ${o.status !== 'ready' 
                     ? `<button class="btn-primary small" onclick="window.completeOrder('${o.id}')">Erledigt <i class="fas fa-check"></i></button>`
                     : '<span style="color:var(--primary); font-weight:800;"><i class="fas fa-check-circle"></i> Fertig</span>'}
             </div>
-        </div>
-    `).join('');
+        </div>`;
+    }).join('');
 }
 
 function initSocket() {
