@@ -20,7 +20,11 @@ export const showToast = (message, type = 'success') => {
         bottom: 40px;
         left: 50%;
         transform: translateX(-50%);
-        background: ${type === 'success' ? '#16a34a' : '#dc2626'};
+        background: ${
+            type === 'success' ? '#16a34a' :
+            type === 'warning' ? '#d97706' :
+            '#dc2626'
+        };
         color: #fff;
         padding: 14px 36px;
         border-radius: 12px;
