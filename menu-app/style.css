@@ -217,6 +217,7 @@ a { text-decoration:none; color:inherit; cursor:pointer; }
 .dish-card {
     background:var(--white); border-radius:var(--radius); overflow:hidden;
     border:1px solid rgba(0,0,0,.06); transition: transform .4s ease, box-shadow .4s ease;
+    position: relative;
 }
 .dish-card:hover { transform:translateY(-4px); box-shadow:0 12px 30px rgba(0,0,0,.08); }
 .dish-card-img {
@@ -825,5 +826,41 @@ a { text-decoration:none; color:inherit; cursor:pointer; }
     border-radius: 20px;
     border: none;
     cursor: default;
+}
+
+
+/* ── Warenkorb: Kachel-Klick Feedback ── */
+@keyframes tile-added-pulse {
+    0%   { transform: scale(1);    box-shadow: var(--shadow); }
+    40%  { transform: scale(1.03); box-shadow: 0 0 0 4px rgba(16,185,129,0.35), var(--shadow); }
+    100% { transform: scale(1);    box-shadow: var(--shadow); }
+}
+
+.dish-card.opa-tile-added {
+    animation: tile-added-pulse 0.55s ease forwards;
+    outline: 2px solid #10b981;
+    outline-offset: 2px;
+}
+
+/* Kleiner grüner "✓ Hinzugefügt"-Toast direkt an der Kachel */
+.dish-card.opa-tile-added::after {
+    content: '✓ Hinzugefügt';
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: #10b981;
+    color: #fff;
+    font-size: .7rem;
+    font-weight: 800;
+    padding: 4px 10px;
+    border-radius: 20px;
+    pointer-events: none;
+    opacity: 1;
+    animation: fadeOutUp 0.55s ease 0.3s forwards;
+}
+
+@keyframes fadeOutUp {
+    0%   { opacity: 1; transform: translateY(0); }
+    100% { opacity: 0; transform: translateY(-8px); }
 }
 
