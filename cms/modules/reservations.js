@@ -241,9 +241,14 @@ export async function renderArchive(container, titleEl) {
 
     container.innerHTML = `
         <div class="glass-panel" style="padding:40px;">
-            <div style="margin-bottom:30px;">
-                <h3>Reservierungs-Archiv</h3>
-                <p style="color:var(--text-muted); font-size:.85rem;">Historische Daten durchsuchen und verwalten.</p>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:30px;">
+                <div>
+                    <h3>Reservierungs-Archiv</h3>
+                    <p style="color:var(--text-muted); font-size:.85rem;">Historische Daten durchsuchen und verwalten.</p>
+                </div>
+                <button class="btn-secondary" id="arc-export" style="display:flex; align-items:center; gap:8px;">
+                    <i class="fas fa-download"></i> CSV Export
+                </button>
             </div>
 
             <div style="display:flex; gap:15px; margin-bottom:40px; padding:20px; background:rgba(255,255,255,0.2); border-radius:20px; border:1px solid rgba(0,0,0,0.05); align-items:center; flex-wrap:wrap;">
@@ -345,6 +350,7 @@ export async function renderArchive(container, titleEl) {
             if (archive.length === 0) {
                 listContainer.innerHTML = '<div style="padding:60px;text-align:center;opacity:.5;"><h3>Keine Archiv-Einträge gefunden</h3></div>';
             }
+            window._archiveData = archive;
         } catch (err) {
             console.error('Error in refreshArchive:', err);
             container.querySelector('#archive-list-container').innerHTML = `<div class="alert error">Archiv konnte nicht geladen werden: ${err.message}</div>`;
@@ -359,6 +365,7 @@ export async function renderArchive(container, titleEl) {
         archiveSearch = ''; archiveDateFrom = ''; archiveDateTo = ''; 
         renderArchive(container, titleEl); 
     };
+    container.querySelector('#arc-export').onclick = () => exportArchiveCSV();
 
     // Initial Render
     refreshArchive();
@@ -611,4 +618,30 @@ window.assignTable = async (id) => {
         }
     };
 };
+
+function exportArchiveCSV() {
+    const resRaw = window._archiveData || [];
+    if (!resRaw.length) return showToast('Keine Daten zum Exportieren.', 'warning');
+    
+    const headers = ['Name', 'E-Mail', 'Telefon', 'Datum', 'Uhrzeit', 'Personen', 'Status', 'Notiz'];
+    const rows = resRaw.map(r => [
+        r.name || '',
+        r.email || '',
+        r.phone || '',
+        r.date || '',
+        r.start_time || '',
+        r.guests || '',
+        r.status || '',
+        (r.note || '').replace(/\n/g, ' ')
+    ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(';'));
+    
+    const csv = [headers.join(';'), ...rows].join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `reservierungen-export-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
 
