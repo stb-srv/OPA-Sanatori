@@ -113,6 +113,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             setTimeout(() => { d.classList.add('out'); setTimeout(() => d.remove(), 800); }, 4000);
         };
 
+        showMenuSkeleton(8);
+
         const m = await get('menu');
         const cats = await get('categories');
         if (cats && Array.isArray(cats)) { window.OPA_CATEGORIES = cats; }
@@ -270,6 +272,31 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Mögliche Werte: 'button' (nur +), 'tile' (nur Kachel), 'both' (beides)
     // FIX: Default auf 'tile' – kein + Button mehr vorhanden
     window.OPA_CART_CLICK_MODE = 'tile';
+
+    function showMenuSkeleton(count = 6) {
+        // Kategorie-Skeleton
+        const catEl = document.getElementById('categories');
+        if (catEl) {
+            catEl.innerHTML = Array(5).fill(0).map(() =>
+                `<button class="cat-btn cat-btn--skeleton skeleton"></button>`
+            ).join('');
+        }
+
+        // Karten-Skeleton
+        const list = document.getElementById('menu-list');
+        if (!list) return;
+        list.innerHTML = Array(count).fill(0).map(() => `
+            <div class="dish-card dish-card--skeleton">
+                <div class="dish-card-img"></div>
+                <div class="dish-card-body">
+                    <span class="skel-line skel-title skeleton"></span>
+                    <span class="skel-line skel-desc skeleton"></span>
+                    <span class="skel-line skel-desc2 skeleton"></span>
+                    <span class="skel-line skel-price skeleton"></span>
+                </div>
+            </div>
+        `).join('');
+    }
 
     function renderCategories() {
         const c = document.getElementById('categories');

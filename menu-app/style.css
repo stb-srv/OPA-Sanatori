@@ -780,3 +780,50 @@ a { text-decoration:none; color:inherit; cursor:pointer; }
     #oh-panel { width: 240px !important; }
 }
 
+
+/* ── Skeleton Loader ── */
+@keyframes skeleton-shimmer {
+    0%   { background-position: -600px 0; }
+    100% { background-position:  600px 0; }
+}
+
+.skeleton {
+    background: linear-gradient(90deg,
+        rgba(0,0,0,0.06) 25%,
+        rgba(0,0,0,0.12) 50%,
+        rgba(0,0,0,0.06) 75%
+    );
+    background-size: 600px 100%;
+    animation: skeleton-shimmer 1.4s infinite linear;
+    border-radius: 8px;
+}
+
+.dish-card--skeleton {
+    pointer-events: none;
+}
+
+.dish-card--skeleton .dish-card-img {
+    background: rgba(0,0,0,0.07);
+}
+
+.dish-card--skeleton .skel-line {
+    display: block;
+    height: 14px;
+    margin-bottom: 10px;
+    border-radius: 6px;
+}
+
+.dish-card--skeleton .skel-title  { width: 70%; height: 18px; }
+.dish-card--skeleton .skel-desc   { width: 90%; }
+.dish-card--skeleton .skel-desc2  { width: 60%; }
+.dish-card--skeleton .skel-price  { width: 40%; height: 16px; margin-top: 14px; }
+
+/* Skeleton Kategorie-Buttons */
+.cat-btn--skeleton {
+    width: 90px;
+    height: 36px;
+    border-radius: 20px;
+    border: none;
+    cursor: default;
+}
+
