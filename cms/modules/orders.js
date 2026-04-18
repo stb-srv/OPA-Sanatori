@@ -80,7 +80,7 @@ function initSocket() {
                 badge.querySelector('span').textContent = 'Live verbunden';
             }
         });
-        socket.on('new-order', (order) => {
+        socket.on('new_order', (order) => {
             orders.unshift(order);
             const grid = document.getElementById('kitchen-grid');
             if (grid) {
