@@ -545,29 +545,144 @@ document.addEventListener('DOMContentLoaded', async () => {
         const p = homeData.pages?.find(pg => pg.id === rawId || pg.id === id);
         const c = document.getElementById('custom-page-container');
         if (!p || !c) return;
+
+        // Header (Bild + Titel)
         const hasImg = p.image && p.image.trim() !== '';
+        let headerHtml = hasImg ? `
+            <div style="height:320px; position:relative; overflow:hidden;">
+                <img src="${p.image}" style="width:100%; height:100%; object-fit:cover;">
+                <div style="position:absolute; inset:0; background:linear-gradient(to top, rgba(0,0,0,.8) 0%, transparent 60%);"></div>
+                <div style="position:absolute; bottom:30px; left:40px; right:40px; color:#fff;">
+                    <span class="badge" style="background:var(--primary); margin-bottom:12px;">INFO</span>
+                    <h2 style="font-size:2.5rem; color:#fff; margin:0; line-height:1.2;">${p.headline || p.title}</h2>
+                </div>
+            </div>` : `
+            <div style="padding:60px 40px; text-align:center; border-bottom:1px solid rgba(0,0,0,.05);">
+                <span class="badge" style="background:var(--primary); margin-bottom:15px; display:inline-block;">INFORMATION</span>
+                <h2 style="font-size:2.8rem; margin:0; line-height:1.1;">${p.headline || p.title}</h2>
+            </div>`;
+
+        // Content: JSON Blocks oder plain text
+        let contentHtml = '';
+        try {
+            const parsed = JSON.parse(p.content || '');
+            if (parsed.version === 1 && Array.isArray(parsed.blocks)) {
+                contentHtml = parsed.blocks.map(renderBlock).join('');
+            } else { throw new Error('legacy'); }
+        } catch {
+            // Rückwärtskompatibilität: plain text
+            contentHtml = `<p style="font-size:1.15rem; line-height:1.8; opacity:.9;">${p.content || ''}</p>`;
+        }
+
         c.innerHTML = `
             <div class="glass-panel" style="padding:0; border-radius:32px; overflow:hidden; border:1px solid rgba(255,255,255,.2);">
-                ${hasImg ? `
-                    <div style="height:320px; position:relative; overflow:hidden;">
-                        <img src="${p.image}" style="width:100%; height:100%; object-fit:cover;">
-                        <div style="position:absolute; inset:0; background:linear-gradient(to top, rgba(0,0,0,.8) 0%, transparent 60%);"></div>
-                        <div style="position:absolute; bottom:30px; left:40px; right:40px; color:#fff; text-align:left;">
-                            <span class="badge" style="background:var(--primary); margin-bottom:12px;">INFO</span>
-                            <h2 style="font-size:2.5rem; color:#fff; margin:0;">${p.headline || p.title}</h2>
-                        </div>
-                    </div>
-                ` : `
-                    <div style="padding:60px 40px; text-align:center; border-bottom:1px solid rgba(0,0,0,.05);">
-                        <span class="badge" style="background:var(--primary); margin-bottom:15px; display:inline-block;">INFORMATION</span>
-                        <h2 style="font-size:2.8rem; margin:0; line-height:1.2;">${p.headline || p.title}</h2>
-                    </div>
-                `}
-                <div style="padding:50px 40px; font-size:1.15rem; line-height:1.8; opacity:.9; max-width:850px; margin:0 auto; text-align:left;">
-                    ${p.content || ''}
+                ${headerHtml}
+                <div style="padding:50px 40px; max-width:850px; margin:0 auto; text-align:left;">
+                    ${contentHtml}
                 </div>
             </div>`;
+
+        // Slider initialisieren
+        initPageSliders(c);
     }
+
+    function renderBlock(block) {
+        switch (block.type) {
+            case 'text':
+                return `
+                    <div style="margin-bottom:36px;">
+                        ${block.heading ? `<h3 style="font-size:1.6rem; margin-bottom:12px; color:var(--primary); line-height:1.2;">${block.heading}</h3>` : ''}
+                        ${block.text ? `<p style="font-size:1.1rem; line-height:1.8; opacity:.9; white-space:pre-wrap;">${block.text}</p>` : ''}
+                    </div>`;
+            case 'image':
+                return `
+                    <div style="margin-bottom:36px; ${block.align === 'center' ? 'text-align:center;' : ''}">
+                        <img src="${block.url}" alt="${block.caption || ''}"
+                             style="max-width:100%; border-radius:16px; ${block.align === 'center' ? 'display:inline-block;' : 'width:100%; height:auto; object-fit:cover;'}"
+                             loading="lazy">
+                        ${block.caption ? `<p style="font-size:.85rem; opacity:.6; margin-top:8px; font-style:italic;">${block.caption}</p>` : ''}
+                    </div>`;
+            case 'slider':
+                if (!block.images || block.images.length === 0) return '';
+                const sliderId = 'slider-' + Math.random().toString(36).slice(2, 8);
+                return `
+                    <div class="opa-page-slider" id="${sliderId}"
+                         data-autoplay="${block.autoplay ? '1' : '0'}"
+                         data-interval="${block.interval || 3}"
+                         style="margin-bottom:36px; position:relative; overflow:hidden; border-radius:20px; background:#000;">
+                        <div class="opa-slider-track" style="display:flex; transition:transform .4s ease-out;">
+                            ${block.images.map(img => `
+                                <div class="opa-slide" style="min-width:100%; position:relative;">
+                                    <img src="${img.url}" alt="${img.caption || ''}"
+                                         style="width:100%; max-height:480px; object-fit:cover; display:block;"
+                                         loading="lazy">
+                                    ${img.caption ? `<div style="position:absolute; bottom:0; left:0; right:0; padding:16px 20px; background:linear-gradient(transparent, rgba(0,0,0,.7)); color:#fff; font-size:.9rem;">${img.caption}</div>` : ''}
+                                </div>`).join('')}
+                        </div>
+                        ${block.images.length > 1 ? `
+                            <button class="opa-slide-btn opa-slide-prev" onclick="window.opaSlide('${sliderId}',-1)"
+                                style="position:absolute; left:12px; top:50%; transform:translateY(-50%); background:rgba(0,0,0,.4); color:#fff; border:none; border-radius:50%; width:40px; height:40px; font-size:1.2rem; cursor:pointer; z-index:2; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(4px); transition:background .2s;">\u2039</button>
+                            <button class="opa-slide-btn opa-slide-next" onclick="window.opaSlide('${sliderId}',1)"
+                                style="position:absolute; right:12px; top:50%; transform:translateY(-50%); background:rgba(0,0,0,.4); color:#fff; border:none; border-radius:50%; width:40px; height:40px; font-size:1.2rem; cursor:pointer; z-index:2; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(4px); transition:background .2s;">\u203a</button>
+                            <div class="opa-slide-dots" style="position:absolute; bottom:12px; left:50%; transform:translateX(-50%); display:flex; gap:8px; z-index:2;">
+                                ${block.images.map((_, i) => `
+                                    <span onclick="window.opaSlideGo('${sliderId}',${i})"
+                                          style="width:8px; height:8px; border-radius:50%; background:rgba(255,255,255,${i === 0 ? '1' : '.4'}); cursor:pointer; transition:all .2s;"
+                                          data-dot="${i}"></span>`).join('')}
+                            </div>` : ''}
+                    </div>`;
+            case 'infobox':
+                const colors = {
+                    blue:   { bg: 'rgba(59,130,246,.08)',  border: '#3b82f6', icon: '#3b82f6' },
+                    green:  { bg: 'rgba(16,185,129,.08)', border: '#10b981', icon: '#10b981' },
+                    orange: { bg: 'rgba(245,158,11,.08)', border: '#f59e0b', icon: '#d97706' },
+                    red:    { bg: 'rgba(239,68,68,.08)',  border: '#ef4444', icon: '#ef4444' }
+                };
+                const col = colors[block.color] || colors.blue;
+                return `
+                    <div style="margin-bottom:28px; padding:20px 24px; border-radius:18px; border-left:5px solid ${col.border}; background:${col.bg}; display:flex; gap:16px; align-items:flex-start;">
+                        <i class="${block.icon || 'fas fa-info-circle'}" style="color:${col.icon}; font-size:1.25rem; margin-top:2px; flex-shrink:0;"></i>
+                        <p style="margin:0; font-size:1.05rem; line-height:1.7; opacity:.9;">${block.text || ''}</p>
+                    </div>`;
+            case 'divider':
+                return `<hr style="margin:40px 0; border:none; border-top:1px solid rgba(255,255,255,.12);">`;
+            default: return '';
+        }
+    }
+
+    function initPageSliders(container) {
+        container.querySelectorAll('.opa-page-slider').forEach(slider => {
+            slider._opaIdx = 0;
+            const autoplay = slider.dataset.autoplay === '1';
+            const interval = parseInt(slider.dataset.interval || '3') * 1000;
+            if (autoplay) slider._opaTimer = setInterval(() => window.opaSlide(slider.id, 1), interval);
+        });
+    }
+
+    window.opaSlide = (id, delta) => {
+        const slider = document.getElementById(id);
+        if (!slider) return;
+        const slides = slider.querySelectorAll('.opa-slide');
+        const nextIdx = ((slider._opaIdx || 0) + delta + slides.length) % slides.length;
+        window.opaSlideGo(id, nextIdx);
+    };
+
+    window.opaSlideGo = (id, idx) => {
+        const slider = document.getElementById(id);
+        if (!slider) return;
+        const track = slider.querySelector('.opa-slider-track');
+        if (track) track.style.transform = `translateX(-${idx * 100}%)`;
+        slider._opaIdx = idx;
+        slider.querySelectorAll('[data-dot]').forEach(dot => {
+            dot.style.background = parseInt(dot.dataset.dot) === idx ? 'rgba(255,255,255,1)' : 'rgba(255,255,255,.4)';
+            dot.style.transform = parseInt(dot.dataset.dot) === idx ? 'scale(1.3)' : 'scale(1)';
+        });
+        if (slider._opaTimer) {
+            clearInterval(slider._opaTimer);
+            const interval = parseInt(slider.dataset.interval || '3') * 1000;
+            if (slider.dataset.autoplay === '1') slider._opaTimer = setInterval(() => window.opaSlide(id, 1), interval);
+        }
+    };
 
     function renderLocationArea(loc, restaurantName = "Restaurant") {
         const c = document.getElementById('location-container');

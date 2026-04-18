@@ -466,56 +466,235 @@ function attachDesignerHandlers(container, home, titleEl, cookieConfig) {
          */
         window.editCustomPage = (id = null) => {
             const page = id
-                ? (home.pages || []).find(p => p.id === id) || { id, title: '', content: '', headline: '' }
-                : { id: 'new-' + Date.now(), title: '', content: '', headline: '' };
+                ? (home.pages || []).find(p => p.id === id) || { id, title: '', content: '', headline: '', image: '' }
+                : { id: 'new-' + Date.now(), title: '', content: '', headline: '', image: '' };
+
+            let blocks = [];
+            try {
+                const parsed = JSON.parse(page.content || '');
+                if (parsed.version === 1 && Array.isArray(parsed.blocks)) {
+                    blocks = parsed.blocks;
+                } else { throw new Error('legacy'); }
+            } catch {
+                if (page.content) blocks = [{ type: 'text', heading: page.headline || '', text: page.content }];
+            }
 
             const modal = document.createElement('div');
             modal.className = 'modal active';
             modal.innerHTML = `
-                <div class="modal-content glass-panel" style="max-width:800px;">
-                    <h3>${id ? 'Seite bearbeiten' : 'Neue Seite erstellen'}</h3>
-                    <div class="form-group">
-                        <label>Men\u00fc-Titel</label>
-                        <input data-field="title" class="input-styled" value="${(page.title || '').replace(/"/g, '&quot;')}" placeholder="z.B. \u00dcber uns">
+                <div class="modal-content glass-panel" style="max-width:900px; width:95%; height:90vh; display:flex; flex-direction:column; padding:0; overflow:hidden;">
+                    <div style="padding:25px 30px; border-bottom:1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between; align-items:center;">
+                        <h3 style="margin:0;">${id ? 'Seite bearbeiten' : 'Neue Seite erstellen'}</h3>
+                        <div style="display:flex; gap:10px;">
+                            <button class="btn-secondary" data-action="cancel">Abbrechen</button>
+                            <button class="btn-primary"   data-action="save"><i class="fas fa-save"></i> Speichern</button>
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label>Haupt-\u00dcberschrift (in der Seite)</label>
-                        <input data-field="headline" class="input-styled" value="${(page.headline || '').replace(/"/g, '&quot;')}" placeholder="Gro\u00dfe \u00dcberschrift auf der Seite">
-                    </div>
-                    <div class="form-group">
-                        <label>Inhalt (HTML erlaubt)</label>
-                        <textarea data-field="content" class="input-styled" style="height:300px;">${page.content || ''}</textarea>
-                    </div>
-                    <div class="modal-actions">
-                        <button class="btn-secondary" data-action="cancel">Abbrechen</button>
-                        <button class="btn-primary"   data-action="save"><i class="fas fa-save"></i> Speichern</button>
+                    <div style="flex:1; overflow-y:auto; padding:30px;">
+                        <div class="form-grid">
+                            <div class="form-group"><label>Men\u00fc-Titel (Navigation)</label><input data-field="title" class="input-styled" value="${(page.title || '').replace(/"/g, '&quot;')}" placeholder="z.B. \u00dcber uns"></div>
+                            <div class="form-group"><label>Vorschaubild / Header-Bild</label>
+                                <div style="display:flex; gap:10px; align-items:center;">
+                                    <input data-field="image" class="input-styled" value="${page.image || ''}" placeholder="/uploads/...">
+                                    <button class="btn-edit" data-action="upload-header"><i class="fas fa-upload"></i></button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="margin-top:40px; border-top:1px solid rgba(255,255,255,0.08); padding-top:20px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                                <h4 style="margin:0;">Seiten-Inhalt</h4>
+                                <div class="btn-group">
+                                    <button class="btn-edit btn-small" data-add-block="text"><i class="fas fa-plus"></i> Text</button>
+                                    <button class="btn-edit btn-small" data-add-block="image"><i class="fas fa-plus"></i> Bild</button>
+                                    <button class="btn-edit btn-small" data-add-block="slider"><i class="fas fa-plus"></i> Slider</button>
+                                    <button class="btn-edit btn-small" data-add-block="infobox"><i class="fas fa-plus"></i> Info</button>
+                                    <button class="btn-edit btn-small" data-add-block="divider"><i class="fas fa-plus"></i> Trenner</button>
+                                </div>
+                            </div>
+                            <div id="blocks-container" style="display:grid; gap:20px;"></div>
+                        </div>
                     </div>
                 </div>
             `;
             document.body.appendChild(modal);
 
-            const q          = (sel) => modal.querySelector(sel);
-            const saveBtn    = q('[data-action="save"]');
-            const cancelBtn  = q('[data-action="cancel"]');
-            const titleInput = q('[data-field="title"]');
+            const blocksList = modal.querySelector('#blocks-container');
 
-            cancelBtn.onclick = () => modal.remove();
-            titleInput.focus();
+            function renderBlockEditor(block, index) {
+                const b = document.createElement('div');
+                b.className = 'glass-panel';
+                b.style.padding = '20px';
+                b.style.border = '1px solid rgba(255,255,255,0.1)';
+                b.style.background = 'rgba(255,255,255,0.02)';
+                b.dataset.index = index;
 
-            saveBtn.onclick = async () => {
+                let contentHtml = '';
+                if (block.type === 'text') {
+                    contentHtml = `
+                        <div class="form-group"><label>\u00dcberschrift</label><input class="input-styled b-heading" value="${(block.heading || '').replace(/"/g, '&quot;')}" placeholder="Optional"></div>
+                        <div class="form-group"><label>Text</label><textarea class="input-styled b-text" style="height:120px;">${block.text || ''}</textarea></div>`;
+                } else if (block.type === 'image') {
+                    contentHtml = `
+                        <div class="form-grid">
+                            <div class="form-group full"><label>Bild-URL</label>
+                                <div style="display:flex; gap:10px;"><input class="input-styled b-url" value="${block.url || ''}"><button class="btn-edit b-upload"><i class="fas fa-upload"></i></button></div>
+                            </div>
+                            <div class="form-group"><label>Untertitel</label><input class="input-styled b-caption" value="${(block.caption || '').replace(/"/g, '&quot;')}"></div>
+                            <div class="form-group"><label>Ausrichtung</label>
+                                <select class="input-styled b-align"><option value="full" ${block.align!=='center'?'selected':''}>Volle Breite</option><option value="center" ${block.align==='center'?'selected':''}>Zentriert</option></select>
+                            </div>
+                        </div>`;
+                } else if (block.type === 'slider') {
+                    const slides = (block.images || []).map((img, i) => `
+                        <div class="slide-row" style="display:flex; gap:10px; margin-bottom:10px; align-items:center;" data-idx="${i}">
+                            <input class="input-styled s-url" value="${img.url || ''}" placeholder="URL" style="flex:2;">
+                            <input class="input-styled s-cap" value="${img.caption || ''}" placeholder="Untertitel" style="flex:1;">
+                            <button class="btn-edit s-del" style="color:#ef4444;"><i class="fas fa-trash"></i></button>
+                        </div>`).join('');
+                    contentHtml = `
+                        <div class="b-slides">${slides}</div>
+                        <button class="btn-edit b-add-slide"><i class="fas fa-plus"></i> Bild hinzuf\u00fcgen</button>
+                        <div class="form-grid" style="margin-top:15px;">
+                            <div class="form-group"><label>Autoplay</label><input type="checkbox" class="b-autoplay" ${block.autoplay?'checked':''}></div>
+                            <div class="form-group"><label>Intervall (Sekunden)</label><input type="number" class="input-styled b-interval" value="${block.interval || 3}" min="1"></div>
+                        </div>`;
+                } else if (block.type === 'infobox') {
+                    contentHtml = `
+                        <div class="form-grid">
+                            <div class="form-group"><label>Icon (FontAwesome)</label><input class="input-styled b-icon" value="${block.icon || 'fas fa-info-circle'}"></div>
+                            <div class="form-group"><label>Farbe</label>
+                                <select class="input-styled b-color">
+                                    <option value="blue" ${block.color==='blue'?'selected':''}>Blau</option>
+                                    <option value="green" ${block.color==='green'?'selected':''}>Gr\u00fcn</option>
+                                    <option value="orange" ${block.color==='orange'?'selected':''}>Orange</option>
+                                    <option value="red" ${block.color==='red'?'selected':''}>Rot</option>
+                                </select>
+                            </div>
+                            <div class="form-group full"><label>Text</label><textarea class="input-styled b-text" style="height:60px;">${block.text || ''}</textarea></div>
+                        </div>`;
+                } else if (block.type === 'divider') {
+                    contentHtml = `<div style="text-align:center; opacity:.5; padding:10px;">\u2500\u2500\u2500 Trennungslinie \u2500\u2500\u2500</div>`;
+                }
+
+                b.innerHTML = `
+                    <div style="display:flex; justify-content:space-between; margin-bottom:15px; align-items:center;">
+                        <span style="font-weight:700; font-size:.85rem; opacity:.7; text-transform:uppercase; letter-spacing:1px;">
+                            <i class="fas fa-grip-lines" style="margin-right:10px; cursor:move;"></i> ${block.type}
+                        </span>
+                        <div class="btn-group">
+                            <button class="btn-edit btn-small b-up" ${index===0?'disabled':''}><i class="fas fa-arrow-up"></i></button>
+                            <button class="btn-edit btn-small b-down" ${index===blocks.length-1?'disabled':''}><i class="fas fa-arrow-down"></i></button>
+                            <button class="btn-edit btn-small b-del" style="color:#ef4444;"><i class="fas fa-trash"></i></button>
+                        </div>
+                    </div>
+                    ${contentHtml}
+                `;
+
+                // Handlers inside block
+                b.querySelector('.b-del').onclick = () => { blocks.splice(index, 1); updateBlocks(); };
+                b.querySelector('.b-up').onclick = () => { if (index > 0) { [blocks[index], blocks[index-1]] = [blocks[index-1], blocks[index]]; updateBlocks(); } };
+                b.querySelector('.b-down').onclick = () => { if (index < blocks.length-1) { [blocks[index], blocks[index+1]] = [blocks[index+1], blocks[index]]; updateBlocks(); } };
+
+                if (block.type === 'image') {
+                    b.querySelector('.b-upload').onclick = async () => {
+                        const file = document.createElement('input'); file.type = 'file'; file.accept = 'image/*';
+                        file.onchange = async (e) => {
+                            const fi = e.target.files[0]; if (!fi) return;
+                            const res = await apiUpload(fi); if (res.success) b.querySelector('.b-url').value = res.url;
+                        };
+                        file.click();
+                    };
+                }
+                if (block.type === 'slider') {
+                    b.querySelector('.b-add-slide').onclick = () => {
+                        if (!block.images) block.images = [];
+                        block.images.push({ url: '', caption: '' });
+                        syncState(); updateBlocks();
+                    };
+                    b.querySelectorAll('.s-del').forEach(db => {
+                        db.onclick = () => {
+                            const idx = parseInt(db.closest('.slide-row').dataset.idx);
+                            block.images.splice(idx, 1);
+                            syncState(); updateBlocks();
+                        };
+                    });
+                }
+
+                blocksList.appendChild(b);
+            }
+
+            function syncState() {
+                blocksList.querySelectorAll('[data-index]').forEach(el => {
+                    const idx = parseInt(el.dataset.index);
+                    const b = blocks[idx];
+                    if (b.type === 'text') {
+                        b.heading = el.querySelector('.b-heading').value;
+                        b.text = el.querySelector('.b-text').value;
+                    } else if (b.type === 'image') {
+                        b.url = el.querySelector('.b-url').value;
+                        b.caption = el.querySelector('.b-caption').value;
+                        b.align = el.querySelector('.b-align').value;
+                    } else if (b.type === 'slider') {
+                        b.autoplay = el.querySelector('.b-autoplay').checked;
+                        b.interval = parseInt(el.querySelector('.b-interval').value);
+                        b.images = Array.from(el.querySelectorAll('.slide-row')).map(row => ({
+                            url: row.querySelector('.s-url').value,
+                            caption: row.querySelector('.s-cap').value
+                        }));
+                    } else if (b.type === 'infobox') {
+                        b.icon = el.querySelector('.b-icon').value;
+                        b.color = el.querySelector('.b-color').value;
+                        b.text = el.querySelector('.b-text').value;
+                    }
+                });
+            }
+
+            function updateBlocks() {
+                const scrollTop = modal.querySelector('div[style*="overflow-y:auto"]').scrollTop;
+                blocksList.innerHTML = '';
+                blocks.forEach((b, i) => renderBlockEditor(b, i));
+                modal.querySelector('div[style*="overflow-y:auto"]').scrollTop = scrollTop;
+            }
+
+            updateBlocks();
+
+            modal.querySelectorAll('[data-add-block]').forEach(btn => {
+                btn.onclick = () => {
+                    syncState();
+                    const type = btn.dataset.addBlock;
+                    const newBlock = { type };
+                    if (type === 'text') { newBlock.heading = ''; newBlock.text = ''; }
+                    if (type === 'image') { newBlock.url = ''; newBlock.caption = ''; newBlock.align = 'full'; }
+                    if (type === 'slider') { newBlock.images = [{url:'', caption:''}]; newBlock.autoplay = true; newBlock.interval = 3; }
+                    if (type === 'infobox') { newBlock.icon = 'fas fa-info-circle'; newBlock.color = 'blue'; newBlock.text = ''; }
+                    blocks.push(newBlock);
+                    updateBlocks();
+                };
+            });
+
+            modal.querySelector('[data-action="upload-header"]').onclick = async () => {
+                const file = document.createElement('input'); file.type = 'file'; file.accept = 'image/*';
+                file.onchange = async (e) => {
+                    const fi = e.target.files[0]; if (!fi) return;
+                    const res = await apiUpload(fi); if (res.success) modal.querySelector('[data-field="image"]').value = res.url;
+                };
+                file.click();
+            };
+
+            modal.querySelector('[data-action="cancel"]').onclick = () => modal.remove();
+            modal.querySelector('[data-action="save"]').onclick = async (e) => {
+                syncState();
+                const saveBtn = e.currentTarget;
                 const updated = {
                     id:       page.id,
-                    title:    q('[data-field="title"]').value.trim(),
-                    headline: q('[data-field="headline"]').value.trim(),
-                    content:  q('[data-field="content"]').value,
+                    title:    modal.querySelector('[data-field="title"]').value.trim(),
+                    image:    modal.querySelector('[data-field="image"]').value.trim(),
+                    content:  JSON.stringify({ version: 1, blocks }),
                     active:   true
                 };
 
-                if (!updated.title) {
-                    showToast('Bitte einen Men\u00fc-Titel eingeben.', 'error');
-                    q('[data-field="title"]').focus();
-                    return;
-                }
+                if (!updated.title) { showToast('Bitte einen Men\u00fc-Titel eingeben.', 'error'); return; }
 
                 if (!home.pages) home.pages = [];
                 const idx = home.pages.findIndex(p => p.id === page.id);
@@ -523,17 +702,10 @@ function attachDesignerHandlers(container, home, titleEl, cookieConfig) {
                 else home.pages.push(updated);
 
                 saveBtn.disabled = true;
-                saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Speichern...';
-
+                saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
                 const res = await apiPost('homepage', home);
-                if (res && res.success) {
-                    modal.remove();
-                    renderDesigner(container, titleEl, 'pages');
-                } else {
-                    showToast(res?.reason || 'Fehler beim Speichern!', 'error');
-                    saveBtn.disabled = false;
-                    saveBtn.innerHTML = '<i class="fas fa-save"></i> Speichern';
-                }
+                if (res && res.success) { modal.remove(); renderDesigner(container, titleEl, 'pages'); }
+                else { showToast(res?.reason || 'Fehler beim Speichern!', 'error'); saveBtn.disabled = false; saveBtn.innerHTML = '<i class="fas fa-save"></i> Speichern'; }
             };
         };
 
