@@ -36,6 +36,8 @@ export async function renderReservations(container, titleEl) {
                     <option value="Confirmed" ${resFilterStatus === 'Confirmed' ? 'selected' : ''}>Confirmed</option>
                     <option value="Inquiry" ${resFilterStatus === 'Inquiry' ? 'selected' : ''}>Anfrage</option>
                     <option value="Blocked" ${resFilterStatus === 'Blocked' ? 'selected' : ''}>Gesperrt</option>
+                    <option value="Cancelled" ${resFilterStatus === 'Cancelled' ? 'selected' : ''}>Storniert</option>
+                    <option value="No-Show" ${resFilterStatus === 'No-Show' ? 'selected' : ''}>No-Show</option>
                 </select>
                 <input type="date" class="input-styled" id="res-date-filter" value="${resFilterDate}" style="width:160px;">
                 <button class="btn-secondary" id="res-reset-filters" style="width:48px; height:48px; padding:0; display:flex; align-items:center; justify-content:center;"><i class="fas fa-undo"></i></button>
@@ -50,7 +52,9 @@ export async function renderReservations(container, titleEl) {
             const listContainer = container.querySelector('#res-list-container');
             if (!listContainer) return;
 
-            let res = (resRaw || []).filter(r => r.status !== 'Cancelled' && r.status !== 'No-Show');
+            let res = resFilterStatus === 'Cancelled' || resFilterStatus === 'No-Show'
+                ? (resRaw || [])
+                : (resRaw || []).filter(r => r.status !== 'Cancelled' && r.status !== 'No-Show');
             
             // Text Search
             if (resFilterText) {
