@@ -3,6 +3,15 @@
  * Contains common UI helpers like Toasts, Prompts, etc.
  */
 
+function escHtml(str) {
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
 export const showToast = (message, type = 'success') => {
     const d = document.createElement('div');
     d.textContent = message;
@@ -35,8 +44,8 @@ export const showConfirm = (title, text) => {
         div.className = 'modal-overlay';
         div.innerHTML = `
             <div class="modal-glass">
-                <h3 style="margin-bottom:10px;">${title}</h3>
-                <p style="margin-bottom:24px;opacity:.7;line-height:1.6;font-size:14px;">${text}</p>
+                <h3 style="margin-bottom:10px;">${escHtml(title)}</h3>
+                <p style="margin-bottom:24px;opacity:.7;line-height:1.6;font-size:14px;">${escHtml(text)}</p>
                 <div style="display:flex;justify-content:flex-end;gap:12px;">
                     <button class="btn-primary" style="background:transparent;color:var(--text);border:1px solid rgba(0,0,0,.1);" id="mc-cancel">Abbrechen</button>
                     <button class="btn-primary" id="mc-ok">Fortfahren</button>
@@ -54,8 +63,8 @@ export const showPrompt = (title, text) => {
         div.className = 'modal-overlay';
         div.innerHTML = `
             <div class="modal-glass">
-                <h3 style="margin-bottom:10px;">${title}</h3>
-                <p style="margin-bottom:16px;opacity:.7;font-size:14px;">${text}</p>
+                <h3 style="margin-bottom:10px;">${escHtml(title)}</h3>
+                <p style="margin-bottom:16px;opacity:.7;font-size:14px;">${escHtml(text)}</p>
                 <input type="text" class="input-styled" id="mp-input" style="margin-bottom:24px;width:100%;" autofocus>
                 <div style="display:flex;justify-content:flex-end;gap:12px;">
                     <button class="btn-primary" style="background:transparent;color:var(--text);border:1px solid rgba(0,0,0,.1);" id="mp-cancel">Abbrechen</button>
