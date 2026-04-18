@@ -126,7 +126,14 @@ module.exports = (requireAuth, requireLicense) => {
     });
 
     router.post('/', requireAuth, async (req, res) => {
-        try { await DB.saveReservations(req.body); res.json({ success: true }); }
+        try {
+            if (!Array.isArray(req.body)) 
+                return res.status(400).json({ success: false, reason: 'Array erwartet.' });
+            if (req.body.length === 0) 
+                return res.status(400).json({ success: false, reason: 'Leeres Array nicht erlaubt.' });
+            await DB.saveReservations(req.body);
+            res.json({ success: true });
+        }
         catch(e) { res.status(500).json({ success: false, reason: e.message }); }
     });
 
