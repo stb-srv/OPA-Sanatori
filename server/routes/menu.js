@@ -260,10 +260,11 @@ module.exports = (requireAuth, requireLicense) => {
                 desc:         item.desc || '',
                 translations: item.translations || {}
             }));
-            const json = JSON.stringify(exportData);
-            res.setHeader('Content-Type', 'application/json; charset=utf-8');
-            res.setHeader('Content-Length', Buffer.byteLength(json, 'utf8'));
-            res.end(json);
+            
+            // Verwende res.send() statt res.end() für bessere Express-Pufferung
+            // res.attachment erzwingt den Download-Dialog im Browser
+            res.attachment('translations-export.json');
+            res.send(exportData);
         } catch (e) {
             res.status(500).json({ success: false, reason: e.message });
         }
