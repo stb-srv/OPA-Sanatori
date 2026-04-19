@@ -838,26 +838,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     window.setLegalView = (type) => {
-        if (!homeData.legal) return;
+        const titleEl   = document.getElementById('legal-title');
+        const contentEl = document.getElementById('legal-content');
 
-        // Inhalt setzen
-        document.getElementById('legal-title').textContent =
-            type === 'impressum' ? 'Impressum' : 'Datenschutzerklärung';
-        document.getElementById('legal-content').textContent =
-            type === 'impressum' ? homeData.legal.impressum : homeData.legal.privacy;
-
-        // Button-Styling aktiv/inaktiv tauschen
-        const btnImpressum = document.querySelector('#view-legal .btn:first-child');
-        const btnPrivacy   = document.querySelector('#view-legal .btn:nth-child(2)');
-        if (btnImpressum && btnPrivacy) {
-            if (type === 'impressum') {
-                btnImpressum.classList.remove('outline');
-                btnPrivacy.classList.add('outline');
-            } else {
-                btnPrivacy.classList.remove('outline');
-                btnImpressum.classList.add('outline');
-            }
+        // Inhalt setzen — auch wenn homeData.legal fehlt, Buttons trotzdem umschalten
+        if (homeData.legal) {
+            if (titleEl)   titleEl.textContent   = type === 'impressum' ? 'Impressum' : 'Datenschutzerklärung';
+            if (contentEl) contentEl.textContent = type === 'impressum' ? homeData.legal.impressum : homeData.legal.privacy;
         }
+
+        // Alle Buttons im Legal-View finden und aktiv/inaktiv setzen
+        const legalBtns = document.querySelectorAll('#view-legal button.btn');
+        legalBtns.forEach(btn => {
+            const isImpressum = btn.getAttribute('onclick')?.includes('impressum');
+            const isPrivacy   = btn.getAttribute('onclick')?.includes('privacy');
+            if (type === 'impressum') {
+                if (isImpressum) btn.classList.remove('outline');
+                if (isPrivacy)   btn.classList.add('outline');
+            } else {
+                if (isPrivacy)   btn.classList.remove('outline');
+                if (isImpressum) btn.classList.add('outline');
+            }
+        });
     };
 
 
