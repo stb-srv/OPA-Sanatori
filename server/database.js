@@ -123,7 +123,6 @@ if (dbType === 'mysql' || dbType === 'mariadb') {
         "ALTER TABLE menu ADD COLUMN sort_order INTEGER DEFAULT 0",
         "ALTER TABLE menu ADD COLUMN is_daily_special INTEGER DEFAULT 0",
         "ALTER TABLE menu ADD COLUMN translations TEXT DEFAULT '{}'",
-        "ALTER TABLE menu ADD COLUMN sort_order INTEGER DEFAULT 0",
         "ALTER TABLE orders ADD COLUMN table_id TEXT",
         "ALTER TABLE orders ADD COLUMN table_name TEXT",
         "ALTER TABLE orders ADD COLUMN status TEXT DEFAULT 'pending'",

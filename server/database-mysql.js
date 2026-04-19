@@ -131,6 +131,10 @@ async function initSchema() {
         // --- MIGRATIONEN ---
         // Migration: sort_order in menu hinzufügen falls es eine Bestands-DB ist
         try {
+            const [cols0] = await conn.query("SHOW COLUMNS FROM menu LIKE 'number'");
+            if (cols0.length === 0) {
+                await conn.query("ALTER TABLE menu ADD COLUMN number VARCHAR(50)");
+            }
             const [cols] = await conn.query("SHOW COLUMNS FROM menu LIKE 'sort_order'");
             if (cols.length === 0) {
                 await conn.query("ALTER TABLE menu ADD COLUMN sort_order INT DEFAULT 0");
@@ -146,7 +150,26 @@ async function initSchema() {
                 await conn.query("ALTER TABLE menu ADD COLUMN translations LONGTEXT DEFAULT ('{}')");
                 console.log('✅ Migration: Spalte translations zu Tabelle menu hinzugefügt.');
             }
-        } catch(e) { console.warn('⚠️  Migration sort_order fehlgeschlagen:', e.message); }
+            const [cols4] = await conn.query("SHOW COLUMNS FROM menu LIKE 'available'");
+            if (cols4.length === 0) {
+                await conn.query("ALTER TABLE menu ADD COLUMN available TINYINT(1) DEFAULT 1");
+                console.log('✅ Migration: Spalte available zu Tabelle menu hinzugefügt.');
+            }
+            const [cols5] = await conn.query("SHOW COLUMNS FROM menu LIKE 'active'");
+            if (cols5.length === 0) {
+                await conn.query("ALTER TABLE menu ADD COLUMN active TINYINT(1) DEFAULT 1");
+                console.log('✅ Migration: Spalte active zu Tabelle menu hinzugefügt.');
+            }
+            const [cols6] = await conn.query("SHOW COLUMNS FROM menu LIKE 'updated_at'");
+            if (cols6.length === 0) {
+                await conn.query("ALTER TABLE menu ADD COLUMN updated_at VARCHAR(50)");
+            }
+            // Migration: sort_order in categories
+            const [colsCat] = await conn.query("SHOW COLUMNS FROM categories LIKE 'sort_order'");
+            if (colsCat.length === 0) {
+                await conn.query("ALTER TABLE categories ADD COLUMN sort_order INT DEFAULT 0");
+            }
+        } catch(e) { console.warn('⚠️  Migration menu/categories columns fehlgeschlagen:', e.message); }
 
         // Indizes
         const idxQueries = [
