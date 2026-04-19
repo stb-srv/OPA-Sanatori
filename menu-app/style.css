@@ -979,7 +979,7 @@ a { text-decoration:none; color:inherit; cursor:pointer; }
 }
 
 .lang-dropdown-menu {
-    position: fixed; top: 72px; right: 40px;
+    position: fixed;
     background: #fff; color: #333;
     border-radius: 14px;
     box-shadow: 0 12px 40px rgba(0,0,0,0.18);

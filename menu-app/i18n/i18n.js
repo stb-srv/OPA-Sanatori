@@ -58,15 +58,31 @@ window.OpaI18n = (function () {
 
     function setDropdownOpen(open) {
         const dd = document.getElementById('lang-dropdown');
+        const btn = document.getElementById('lang-switcher-btn');
         const menu = document.getElementById('lang-dropdown-menu');
         const backdrop = document.getElementById('lang-backdrop');
         if (!dd || !menu) return;
+        
         if (open) {
             dd.classList.add('open');
             menu.classList.add('open');
+            
             if (window.innerWidth <= 768) {
                 if (backdrop) backdrop.style.display = 'block';
                 document.body.style.overflow = 'hidden';
+                // Reset desktop styles
+                menu.style.top = '';
+                menu.style.right = '';
+                menu.style.left = '';
+            } else {
+                // Desktop Positioning
+                if (btn) {
+                    const rect = btn.getBoundingClientRect();
+                    // Align menu right edge with button right edge
+                    menu.style.top = (rect.bottom + 10) + 'px';
+                    menu.style.right = (window.innerWidth - rect.right) + 'px';
+                    menu.style.left = 'auto';
+                }
             }
         } else {
             dd.classList.remove('open');
@@ -229,6 +245,13 @@ window.OpaI18n = (function () {
             });
             document.body.appendChild(backdrop);
         }
+
+        window.addEventListener('resize', () => {
+            const menu = document.getElementById('lang-dropdown-menu');
+            if (menu && menu.classList.contains('open')) {
+                setDropdownOpen(false);
+            }
+        });
     }
 
     return { init, t, setLang, applyTranslations, renderDropdown, setDropdownOpen, attachLangOptionListeners, getLanguages: () => LANGUAGES, getCurrent: () => currentLang };
