@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="cookie-banner.css">
     <link rel="stylesheet" href="cart.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="i18n/i18n.js"></script>
 </head>
 <body>
 
@@ -18,6 +19,15 @@
     <nav class="nav" id="main-nav">
         <a onclick="window.switchTab('home')" class="nav-logo" id="nav-logo" style="cursor:pointer;">OPA!</a>
         <div class="nav-links" id="nav-links"></div>
+        <div class="lang-switcher" id="lang-dropdown">
+            <button class="lang-switcher-btn" id="lang-switcher-btn"
+                    onclick="document.getElementById('lang-dropdown').classList.toggle('open')"
+                    aria-label="Sprache wechseln" aria-haspopup="listbox">
+                🇩🇪 <span>DE</span>
+                <i class="fas fa-chevron-down" style="font-size:.6rem;opacity:.6;"></i>
+            </button>
+            <div class="lang-dropdown-menu" id="lang-dropdown-menu" role="listbox"></div>
+        </div>
         <button class="nav-hamburger" id="nav-hamburger" 
                 aria-label="Menü öffnen" onclick="window.toggleMobileNav()">
             <span></span><span></span><span></span>
@@ -72,7 +82,7 @@
             </div>
             <div class="menu-search-wrap">
                 <i class="fas fa-search menu-search-icon"></i>
-                <input type="text" id="menu-search" class="menu-search" placeholder="Gericht suchen…">
+                <input type="text" id="menu-search" class="menu-search" placeholder="Gericht suchen…" data-i18n-placeholder="menu.search_placeholder">
             </div>
             <div class="cat-bar" id="categories"></div>
             <div class="menu-grid" id="menu-list"></div>

@@ -941,3 +941,82 @@ a { text-decoration:none; color:inherit; cursor:pointer; }
     box-shadow: 0 2px 8px rgba(200,169,110,0.4);
     z-index: 5; pointer-events: none;
 }
+
+/* ── Sprachauswahl ── */
+.lang-switcher { position: relative; }
+
+.lang-switcher-btn {
+    display: flex; align-items: center; gap: 6px;
+    background: rgba(255,255,255,0.12);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 20px;
+    padding: 6px 12px;
+    color: inherit; cursor: pointer;
+    font-size: .85rem; font-weight: 600;
+    transition: background .2s, border-color .2s;
+    white-space: nowrap;
+}
+.lang-switcher-btn:hover {
+    background: rgba(255,255,255,0.22);
+    border-color: rgba(255,255,255,0.4);
+}
+
+.lang-dropdown-menu {
+    position: absolute; top: calc(100% + 10px); right: 0;
+    background: #fff; color: #333;
+    border-radius: 14px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.18);
+    border: 1px solid rgba(0,0,0,0.06);
+    min-width: 200px;
+    max-height: 420px; overflow-y: auto;
+    padding: 8px;
+    display: none;
+    z-index: 2000;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0,0,0,0.15) transparent;
+}
+@keyframes langDropIn {
+    from { opacity: 0; transform: translateY(-8px) scale(.97); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.lang-switcher.open .lang-dropdown-menu {
+    display: block;
+    animation: langDropIn .15s ease-out forwards;
+}
+
+.lang-option {
+    display: flex; align-items: center; gap: 10px;
+    width: 100%; padding: 9px 12px;
+    background: none; border: none; border-radius: 8px;
+    cursor: pointer; font-size: .88rem;
+    color: #333; text-align: left;
+    transition: background .15s;
+}
+.lang-option:hover { background: rgba(0,0,0,0.04); }
+.lang-option.active {
+    background: rgba(200,169,110,0.1);
+    font-weight: 600; color: var(--primary, #1B3A5C);
+}
+.lang-flag { font-size: 1.1rem; line-height: 1; }
+.lang-label { flex: 1; }
+
+/* RTL Support */
+[dir="rtl"] .lang-dropdown-menu { right: auto; left: 0; }
+[dir="rtl"] .lang-option { flex-direction: row-reverse; }
+[dir="rtl"] .lang-option .lang-label { text-align: right; }
+[dir="rtl"] #nav-links, [dir="rtl"] .dish-card-body { text-align: right; }
+
+/* Mobile: Bottom Sheet */
+@media (max-width: 768px) {
+    .lang-dropdown-menu {
+        position: fixed;
+        bottom: 0; top: auto; right: 0; left: 0;
+        border-radius: 20px 20px 0 0;
+        max-height: 70vh; min-width: 100%;
+    }
+    @keyframes langDropIn {
+        from { opacity: 0; transform: translateY(20px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+}
+
