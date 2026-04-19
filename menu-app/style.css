@@ -23,7 +23,7 @@
    ═══════════════════════════════════════ */
 *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
 html { scroll-behavior: smooth; }
-body { font-family: var(--font-body); color: var(--text); background: var(--white); line-height:1.6; -webkit-font-smoothing: antialiased; }
+body { font-family: var(--font-body); color: var(--text); background: var(--white); line-height:1.6; -webkit-font-smoothing: antialiased; padding-top: 72px; }
 img { display:block; max-width:100%; height:auto; }
 a { text-decoration:none; color:inherit; cursor:pointer; }
 
@@ -61,7 +61,7 @@ a { text-decoration:none; color:inherit; cursor:pointer; }
    HERO
    ═══════════════════════════════════════ */
 .hero {
-    position:relative; height:100vh; min-height:600px;
+    position:relative; height: calc(100vh - 72px); min-height:600px;
     display:flex; align-items:center; justify-content:center;
     overflow:hidden; color:var(--white); text-align:center;
 }
