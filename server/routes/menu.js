@@ -255,14 +255,20 @@ module.exports = (requireAuth, requireLicense) => {
     router.get('/menu/export-translations', requireAuth, async (req, res) => {
         try {
             const menu = await DB.getMenu();
-            const exportData = menu.map(item => ({
-                name:         item.name,
-                desc:         item.desc || '',
-                translations: item.translations || {}
-            }));
+            const cats = await DB.getCategories();
+
+            const exportData = {
+                categories: cats.map(c => ({
+                    label: c.label,
+                    translations: c.translations || {}
+                })),
+                dishes: menu.map(item => ({
+                    name:         item.name,
+                    desc:         item.desc || '',
+                    translations: item.translations || {}
+                }))
+            };
             
-            // Verwende res.send() statt res.end() für bessere Express-Pufferung
-            // res.attachment erzwingt den Download-Dialog im Browser
             res.attachment('translations-export.json');
             res.send(exportData);
         } catch (e) {
@@ -272,27 +278,49 @@ module.exports = (requireAuth, requireLicense) => {
 
     router.post('/menu/import-translations', requireAuth, async (req, res) => {
         try {
-            const importData = req.body;
-            if (!Array.isArray(importData)) return res.status(400).json({ success: false, reason: 'Ungültiges Format (Array erwartet).' });
+            let importData = req.body;
+            let categories = [];
+            let dishes = [];
+
+            if (Array.isArray(importData)) {
+                // Altes Format: Nur ein Array von Gerichten
+                dishes = importData;
+            } else if (importData && typeof importData === 'object') {
+                // Neues Format: { categories: [], dishes: [] }
+                categories = importData.categories || [];
+                dishes = importData.dishes || [];
+            } else {
+                return res.status(400).json({ success: false, reason: 'Ungültiges Format.' });
+            }
 
             const currentMenu = await DB.getMenu();
-            let updated = 0;
+            const currentCats = await DB.getCategories();
+            
+            let updatedDishes = 0;
+            let updatedCats   = 0;
             let skipped = 0;
             const notFound = [];
 
-            for (const entry of importData) {
+            // 1. Kategorien verarbeiten
+            for (const entry of categories) {
+                if (!entry.label) continue;
+                const match = currentCats.find(c => c.label.trim().toLowerCase() === entry.label.trim().toLowerCase());
+                if (match) {
+                    const merged = { ...(match.translations || {}), ...(entry.translations || {}) };
+                    await DB.updateCategory(match.id, { translations: merged });
+                    updatedCats++;
+                }
+            }
+
+            // 2. Gerichte verarbeiten
+            for (const entry of dishes) {
                 if (!entry.name) { skipped++; continue; }
 
-                // Case-insensitive Suche nach dem Gericht anhand des Namens
                 const match = currentMenu.find(m => m.name.trim().toLowerCase() === entry.name.trim().toLowerCase());
-
                 if (match) {
-                    const newTranslations = entry.translations || {};
-                    // Merge: Vorhandene Sprachen behalten, neue hinzufügen oder überschreiben
-                    const mergedTranslations = { ...(match.translations || {}), ...newTranslations };
-
-                    await DB.updateMenu(match.id, { translations: mergedTranslations });
-                    updated++;
+                    const merged = { ...(match.translations || {}), ...(entry.translations || {}) };
+                    await DB.updateMenu(match.id, { translations: merged });
+                    updatedDishes++;
                 } else {
                     notFound.push(entry.name);
                 }
@@ -300,7 +328,8 @@ module.exports = (requireAuth, requireLicense) => {
 
             res.json({
                 success: true,
-                updated,
+                updated: updatedDishes,
+                updated_categories: updatedCats,
                 skipped,
                 not_found: notFound
             });

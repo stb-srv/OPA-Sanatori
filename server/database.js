@@ -68,7 +68,8 @@ if (dbType === 'mysql' || dbType === 'mariadb') {
             label      TEXT NOT NULL,
             icon       TEXT,
             active     INTEGER DEFAULT 1,
-            sort_order INTEGER DEFAULT 0
+            sort_order INTEGER DEFAULT 0,
+            translations TEXT DEFAULT '{}'
         );
 
         CREATE TABLE IF NOT EXISTS reservations (
@@ -130,6 +131,7 @@ if (dbType === 'mysql' || dbType === 'mariadb') {
         "ALTER TABLE orders ADD COLUMN note TEXT",
         "ALTER TABLE orders ADD COLUMN items TEXT DEFAULT '[]'",
         "ALTER TABLE categories ADD COLUMN sort_order INTEGER DEFAULT 0",
+        "ALTER TABLE categories ADD COLUMN translations TEXT DEFAULT '{}'",
     ];
     migrations.forEach(sql => { try { db.exec(sql + ';'); } catch (e) { /* column already exists */ } });
 
@@ -168,11 +170,11 @@ if (dbType === 'mysql' || dbType === 'mariadb') {
         updateMenuRow:      db.prepare('UPDATE menu SET number = ?, name = ?, price = ?, cat = ?, desc = ?, allergens = ?, additives = ?, image = ?, active = ?, available = ?, is_daily_special = ?, translations = ?, sort_order = ?, updated_at = ? WHERE id = ?'),
         getCategories:      db.prepare('SELECT * FROM categories ORDER BY sort_order ASC, label ASC'),
         getCategoryById:    db.prepare('SELECT * FROM categories WHERE id = ?'),
-        addCategory:        db.prepare('INSERT INTO categories (id, label, icon, active, sort_order) VALUES (?, ?, ?, ?, ?)'),
-        updateCategory:     db.prepare('UPDATE categories SET label = ?, icon = ?, active = ?, sort_order = ? WHERE id = ?'),
+        addCategory:        db.prepare('INSERT INTO categories (id, label, icon, active, sort_order, translations) VALUES (?, ?, ?, ?, ?, ?)'),
+        updateCategory:     db.prepare('UPDATE categories SET label = ?, icon = ?, active = ?, sort_order = ?, translations = ? WHERE id = ?'),
         deleteCategory:     db.prepare('DELETE FROM categories WHERE id = ?'),
         deleteAllCategories:db.prepare('DELETE FROM categories'),
-        upsertCategory:     db.prepare('INSERT OR REPLACE INTO categories (id, label, icon, active, sort_order) VALUES (?, ?, ?, ?, ?)'),
+        upsertCategory:     db.prepare('INSERT OR REPLACE INTO categories (id, label, icon, active, sort_order, translations) VALUES (?, ?, ?, ?, ?, ?)'),
         getReservations:    db.prepare('SELECT * FROM reservations ORDER BY submittedAt DESC'),
         getReservationById: db.prepare('SELECT * FROM reservations WHERE id = ?'),
         addReservation:     db.prepare('INSERT INTO reservations (id, token, name, email, phone, date, time, start_time, end_time, guests, note, status, assigned_tables, submittedAt, ip) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'),
@@ -244,20 +246,24 @@ if (dbType === 'mysql' || dbType === 'mariadb') {
                 list.forEach((m, i) => stmts.upsertMenu.run(m.id||Date.now().toString(), m.number||null, m.name, m.price, m.cat, m.desc, JSON.stringify(m.allergens||[]), JSON.stringify(m.additives||[]), m.image||null, m.active!==false?1:0, m.available!==false?1:0, m.is_daily_special?1:0, JSON.stringify(m.translations||{}), m.sort_order||i, m.updated_at||null));
             })(items);
         },
-        getCategories: () => stmts.getCategories.all(),
-        addCategory: (c) => { stmts.addCategory.run(c.id, c.label, c.icon||'', c.active!==false?1:0, c.sort_order||0); },
+        getCategories: () => stmts.getCategories.all().map(c => ({
+            ...c,
+            active: c.active !== 0,
+            translations: safeJsonParse(c.translations, {})
+        })),
+        addCategory: (c) => { stmts.addCategory.run(c.id, c.label, c.icon||'', c.active!==false?1:0, c.sort_order||0, JSON.stringify(c.translations||{})); },
         updateCategory: (id, update) => {
             const existing = stmts.getCategoryById.get(id);
             if (!existing) return null;
             const merged = { ...existing, ...update };
-            stmts.updateCategory.run(merged.label, merged.icon||'', merged.active!==false?1:0, merged.sort_order||0, id);
-            return merged;
+            stmts.updateCategory.run(merged.label, merged.icon||'', merged.active!==false?1:0, merged.sort_order||0, JSON.stringify(merged.translations||{}), id);
+            return { ...merged, active: merged.active !== 0, translations: safeJsonParse(merged.translations, {}) };
         },
         deleteCategory: (id) => stmts.deleteCategory.run(id),
         saveCategories: (items) => {
             db.transaction((list) => {
                 stmts.deleteAllCategories.run();
-                list.forEach((c, i) => stmts.upsertCategory.run(c.id, c.label, c.icon||'', c.active!==false?1:0, typeof c.sort_order!=='undefined'?c.sort_order:i));
+                list.forEach((c, i) => stmts.upsertCategory.run(c.id, c.label, c.icon||'', c.active!==false?1:0, typeof c.sort_order!=='undefined'?c.sort_order:i, JSON.stringify(c.translations||{})));
             })(items);
         },
         getReservations: () => {

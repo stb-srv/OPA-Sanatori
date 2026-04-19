@@ -83,7 +83,8 @@ async function initSchema() {
                 label      TEXT NOT NULL,
                 icon       TEXT,
                 active     TINYINT(1) DEFAULT 1,
-                sort_order INT DEFAULT 0
+                sort_order INT DEFAULT 0,
+                translations LONGTEXT DEFAULT ('{}')
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         `);
         await conn.query(`
@@ -168,6 +169,10 @@ async function initSchema() {
             const [colsCat] = await conn.query("SHOW COLUMNS FROM categories LIKE 'sort_order'");
             if (colsCat.length === 0) {
                 await conn.query("ALTER TABLE categories ADD COLUMN sort_order INT DEFAULT 0");
+            }
+            const [colsCatTr] = await conn.query("SHOW COLUMNS FROM categories LIKE 'translations'");
+            if (colsCatTr.length === 0) {
+                await conn.query("ALTER TABLE categories ADD COLUMN translations LONGTEXT DEFAULT ('{}')");
             }
         } catch(e) { console.warn('⚠️  Migration menu/categories columns fehlgeschlagen:', e.message); }
 
@@ -285,18 +290,25 @@ const DB = {
     },
 
     // --- Categories ---
-    getCategories: async () => q('SELECT * FROM categories ORDER BY sort_order ASC, label ASC'),
+    getCategories: async () => {
+        const rows = await q('SELECT * FROM categories ORDER BY sort_order ASC, label ASC');
+        return rows.map(r => ({
+            ...r,
+            active: Number(r.active) !== 0,
+            translations: safeJsonParse(r.translations, {})
+        }));
+    },
     addCategory: async (c) => {
-        await q('INSERT INTO categories (id, label, icon, active, sort_order) VALUES (?,?,?,?,?)',
-            [c.id, c.label, c.icon||'', c.active!==false?1:0, c.sort_order||0]);
+        await q('INSERT INTO categories (id, label, icon, active, sort_order, translations) VALUES (?,?,?,?,?,?)',
+            [c.id, c.label, c.icon||'', c.active!==false?1:0, c.sort_order||0, JSON.stringify(c.translations||{})]);
     },
     updateCategory: async (id, update) => {
         const rows = await q('SELECT * FROM categories WHERE id = ?', [id]);
         if (!rows[0]) return null;
         const merged = { ...rows[0], ...update };
-        await q('UPDATE categories SET label=?, icon=?, active=?, sort_order=? WHERE id=?',
-            [merged.label, merged.icon||'', merged.active!==false?1:0, merged.sort_order||0, id]);
-        return merged;
+        await q('UPDATE categories SET label=?, icon=?, active=?, sort_order=?, translations=? WHERE id=?',
+            [merged.label, merged.icon||'', merged.active!==false?1:0, merged.sort_order||0, JSON.stringify(merged.translations||{}), id]);
+        return { ...merged, active: merged.active !== 0, translations: safeJsonParse(merged.translations, {}) };
     },
     deleteCategory: async (id) => q('DELETE FROM categories WHERE id = ?', [id]),
     saveCategories: async (items) => {
@@ -305,8 +317,8 @@ const DB = {
         try {
             await conn.query('DELETE FROM categories');
             for (const [i, c] of items.entries()) {
-                await conn.query('INSERT INTO categories (id, label, icon, active, sort_order) VALUES (?,?,?,?,?)',
-                    [c.id, c.label, c.icon||'', c.active!==false?1:0, typeof c.sort_order!=='undefined'?c.sort_order:i]);
+                await conn.query('INSERT INTO categories (id, label, icon, active, sort_order, translations) VALUES (?,?,?,?,?,?)',
+                    [c.id, c.label, c.icon||'', c.active!==false?1:0, typeof c.sort_order!=='undefined'?c.sort_order:i, JSON.stringify(c.translations||{})]);
             }
             await conn.commit();
         } catch(e) { await conn.rollback(); throw e; } finally { conn.release(); }

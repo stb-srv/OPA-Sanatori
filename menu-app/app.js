@@ -430,9 +430,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
             .map(cat => {
                 const iconHtml = cat.icon ? `<i class="${cat.icon}"></i> ` : '';
-                // Kategorien aus DB sind bereits lokalisiert oder sprachneutral
+                const { label: catLabel } = getCategoryTranslation(cat);
                 return `<button class="cat-btn" onclick="window.filterMenu('${cat.label}', this)">
-                    ${iconHtml}${cat.label}
+                    ${iconHtml}${catLabel}
                 </button>`;
             }).join('');
 
@@ -546,6 +546,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         return {
             name: tr?.name || item.name,
             desc: tr?.desc || item.desc
+        };
+    }
+
+    function getCategoryTranslation(cat) {
+        const lang = window._opaCurrentLang || 'de';
+        if (lang === 'de') return { label: cat.label };
+        const tr = cat.translations?.[lang];
+        return {
+            label: tr?.label || cat.label
         };
     }
 

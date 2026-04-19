@@ -818,26 +818,46 @@ function attachMenuHandlers(container, menu, categories, allergens, additives, c
                 const reader = new FileReader();
                 reader.onload = async (ev) => {
                     try {
-                        let parsed = JSON.parse(ev.target.result);
-                        const data = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.dishes) ? parsed.dishes : null);
-                        if (!data) throw new Error('Kein gültiges Array gefunden');
+                        const parsed = JSON.parse(ev.target.result);
+                        let dishCount = 0;
+                        let catCount  = 0;
+
+                        if (Array.isArray(parsed)) {
+                            dishCount = parsed.length;
+                        } else if (parsed && typeof parsed === 'object') {
+                            dishCount = (parsed.dishes || []).length;
+                            catCount  = (parsed.categories || []).length;
+                        } else {
+                            throw new Error('Ungültiges Format');
+                        }
                         
-                        if (await showConfirm('\u00dcbersetzungen importieren?', `${data.length} Gerichte in der Datei gefunden. Vorhandene \u00dcbersetzungen werden ggf. erg\u00e4nzt.`)) {
-                            const res = await apiPost('menu/import-translations', data);
+                        let confirmTitle = 'Übersetzungen importieren?';
+                        let confirmMsg   = `${dishCount} Gerichte`;
+                        if (catCount > 0) confirmMsg += ` und ${catCount} Kategorien`;
+                        confirmMsg += ` in der Datei gefunden. Vorhandene Übersetzungen werden ergänzt.`;
+
+                        if (await showConfirm(confirmTitle, confirmMsg)) {
+                            const res = await apiPost('menu/import-translations', parsed);
                             if (res && res.success) {
-                                let msg = `\ud83d\uddf3\ufe0f ${res.updated} aktualisiert`;
-                                if (res.skipped > 0) msg += `, \u26a0\ufe0f ${res.skipped} übersprungen`;
-                                if (res.not_found && res.not_found.length > 0) msg += `. Nicht gefunden: ${res.not_found.slice(0,3).join(', ')}${res.not_found.length > 3 ? '...' : ''}`;
+                                let msg = `✅ Import erfolgreich! `;
+                                msg += `(${res.updated} Gerichte`;
+                                if (res.updated_categories > 0) msg += `, ${res.updated_categories} Kategorien`;
+                                msg += ` aktualisiert)`;
+                                
+                                if (res.skipped > 0) msg += ` | ⚠️ ${res.skipped} übersprungen`;
+                                if (res.not_found && res.not_found.length > 0) msg += `. Nicht gefunden: ${res.not_found.slice(0,2).join(', ')}...`;
                                 
                                 showToast(msg, res.not_found?.length > 0 ? 'warning' : 'success');
-                                // Refresh menu to show potentially updated data
                                 cachedMenuData = null;
                                 renderMenu(container, document.getElementById('view-title'), 'dishes', true);
                             } else {
                                 showToast(res?.reason || 'Import fehlgeschlagen.', 'error');
                             }
                         }
-                    } catch (err) { console.error('[Import Translations]', err); showToast('Ung\u00fcltige Datei oder Format: ' + err.message, 'error'); }
+                    } catch (err) { 
+                        console.error('[Import Translations]', err); 
+                        showToast('Fehler: ' + err.message, 'error'); 
+                    }
                 };
                 reader.readAsText(file);
             };
