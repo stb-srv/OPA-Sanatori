@@ -257,6 +257,24 @@ function renderSettingsTab(settings, branding, users, licInfo) {
                 </div>
             </div>
 
+            <div style="border-top:1px solid rgba(0,0,0,0.07); padding-top:24px; margin-bottom:28px;">
+                <h4 style="margin:0 0 6px;"><i class="fas fa-star" style="color:var(--accent);"></i> Tagesspecials</h4>
+                <p style="color:var(--text-muted); font-size:.85rem; margin:0 0 18px;">Steuert ob die goldenen "Heute"-Badges und der Special-Filter auf der Speisekarte angezeigt werden.</p>
+                <div style="background:rgba(255,255,255,0.5); border:1px solid rgba(0,0,0,0.06); border-radius:14px; padding:18px; display:flex; align-items:center; gap:16px;">
+                    <div style="width:40px;height:40px;border-radius:10px;background:rgba(200,169,110,0.15); display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                        <i class="fas fa-star" style="color:var(--accent);"></i>
+                    </div>
+                    <div style="flex:1;">
+                        <div style="font-weight:700; font-size:.9rem;">Tagesspecials anzeigen</div>
+                        <div style="color:var(--text-muted); font-size:.78rem; margin-top:2px;">Badges und Filter auf der Speisekarte aktivieren</div>
+                    </div>
+                    <label class="switch small" style="flex-shrink:0;">
+                        <input type="checkbox" id="v-specials" ${settings.dailySpecialsEnabled !== false ? 'checked' : ''}>
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+            </div>
+
             <div style="display:flex; justify-content:flex-end; margin-top:24px;">
                 <button class="btn-primary" id="btn-save-modules">
                     <i class="fas fa-save"></i> Speichern
@@ -481,7 +499,8 @@ function attachSettingsHandlers(container, settings, branding, users, licInfo, t
                     activeModules: {
                         orders:       container.querySelector('#v-orders')?.checked ?? (settings.activeModules?.orders ?? true),
                         reservations: container.querySelector('#v-res')?.checked    ?? (settings.activeModules?.reservations ?? true)
-                    }
+                    },
+                    dailySpecialsEnabled: container.querySelector('#v-specials')?.checked ?? true
                 })
             ]);
             if (modRes?.success && visRes?.success) {

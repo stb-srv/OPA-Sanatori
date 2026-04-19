@@ -929,3 +929,15 @@ a { text-decoration:none; color:inherit; cursor:pointer; }
 }
 .fav-btn:hover { transform: scale(1.15); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
 .fav-btn.active { background: #fff0f0; }
+
+/* ── Tagesspecial Badge ── */
+.daily-special-badge {
+    position: absolute; top: 10px; left: 10px;
+    background: linear-gradient(135deg, #C8A96E, #e8c97e);
+    color: #fff;
+    font-size: .7rem; font-weight: 800;
+    padding: 4px 10px; border-radius: 20px;
+    letter-spacing: .5px;
+    box-shadow: 0 2px 8px rgba(200,169,110,0.4);
+    z-index: 5; pointer-events: none;
+}

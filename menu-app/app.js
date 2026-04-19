@@ -252,6 +252,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- BRANDING ---
     function applyBranding(d) {
+        window.OPA_DAILY_SPECIALS_ENABLED = d.dailySpecialsEnabled !== false;
         if (d.heroTitle) document.getElementById('hero-title').textContent = d.heroTitle;
         if (d.heroSlogan) document.getElementById('hero-slogan').textContent = d.heroSlogan;
         if (d.bgImage) {
@@ -422,7 +423,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                 </button>`;
             }).join('');
 
-        c.innerHTML = allBtn + catBtns;
+        let specialBtn = '';
+        if (window.OPA_DAILY_SPECIALS_ENABLED) {
+            const hasSpecials = menuItems.some(i => i.is_daily_special && i.active !== false && i.available !== false);
+            if (hasSpecials) {
+                specialBtn = `<button class="cat-btn cat-btn--special" onclick="window.filterMenu('__special__', this)">
+                    ⭐ Tagesspecials
+                </button>`;
+            }
+        }
+
+        c.innerHTML = allBtn + specialBtn + catBtns;
 
         const searchInput = document.getElementById('menu-search');
         if (searchInput) {
@@ -473,7 +484,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     function applyMenuFilter() {
         // Nur aktive UND verfügbare Gerichte anzeigen
         let items = menuItems.filter(i => i.active !== false && i.available !== false);
-        if (activeCat !== 'all') items = items.filter(i => i.cat === activeCat);
+        if (activeCat === '__special__') {
+            items = items.filter(i => i.is_daily_special);
+        } else if (activeCat !== 'all' && activeCat !== '__fav__') {
+            items = items.filter(i => i.cat === activeCat);
+        }
         if (searchQuery) {
             // Erweiterte Suchbegriffe durch Aliase
             const searchTerms = [searchQuery];
@@ -538,6 +553,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                  data-item-price="${price}"
                  ${tileClickable ? 'data-cart-tile="1"' : ''}>
                 <div class="dish-card-img">
+                    ${(item.is_daily_special && window.OPA_DAILY_SPECIALS_ENABLED) ? `<span class="daily-special-badge">⭐ Heute</span>` : ''}
                     ${item.image
                         ? `<img src="${item.image}" alt="${item.name}" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
                            <span style="display:none"><i class="fas fa-utensils"></i> ${item.cat}</span>`

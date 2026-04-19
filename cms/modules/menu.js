@@ -350,6 +350,12 @@ function renderDishesTab(menu, categories, allergens, additives) {
                 <div class="form-group" style="grid-column:1/-1;"><label>Beschreibung (optional)</label><textarea class="input-styled" id="df-desc" rows="2" placeholder="Zutaten, Zubereitungsart..."></textarea></div>
             </div>
             <div style="margin-top:20px;">
+                <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-weight:700; color:var(--primary);">
+                    <input type="checkbox" id="df-special" style="width:18px; height:18px;">
+                    ⭐ Als Tagesspecial markieren
+                </label>
+            </div>
+            <div style="margin-top:20px;">
                 <label>Bilder-Upload</label>
                 <div id="df-img-preview" class="image-upload-preview" style="width:120px;height:120px;cursor:pointer;border-radius:12px;border:2px dashed rgba(0,0,0,0.15);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;overflow:hidden;background:rgba(255,255,255,0.5);font-size:.75rem;color:#888;transition:border-color .2s;">
                     <i class="fas fa-cloud-upload-alt" style="font-size:1.4rem;opacity:.4;"></i><span>Bild hochladen</span>
@@ -569,6 +575,7 @@ function attachMenuHandlers(container, menu, categories, allergens, additives, c
                 }
             }
             container.querySelector('#df-desc').value = d.desc  || '';
+            container.querySelector('#df-special').checked = !!d.is_daily_special;
             container.querySelector('#df-img').value  = d.image || '';
             const preview = container.querySelector('#df-img-preview');
             if (d.image) preview.innerHTML = `<img src="${d.image}" style="width:100%;height:100%;object-fit:cover;border-radius:10px;">`;
@@ -802,6 +809,7 @@ function attachMenuHandlers(container, menu, categories, allergens, additives, c
                 cat,
                 desc:      (container.querySelector('#df-desc').value || '').trim(),
                 image:     container.querySelector('#df-img').value || null,
+                is_daily_special: container.querySelector('#df-special').checked,
                 allergens: Array.from(container.querySelectorAll('.dish-allergen-cb:checked')).map(cb => cb.value),
                 additives: Array.from(container.querySelectorAll('.dish-additive-cb:checked')).map(cb => cb.value),
                 available: editingDishIndex !== -1 ? (safeMenu[editingDishIndex].available !== false) : true,

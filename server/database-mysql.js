@@ -71,6 +71,7 @@ async function initSchema() {
                 image     TEXT,
                 active    TINYINT(1) DEFAULT 1,
                 available TINYINT(1) DEFAULT 1,
+                is_daily_special TINYINT(1) DEFAULT 0,
                 updated_at VARCHAR(50),
                 sort_order INT DEFAULT 0
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -133,6 +134,11 @@ async function initSchema() {
             if (cols.length === 0) {
                 await conn.query("ALTER TABLE menu ADD COLUMN sort_order INT DEFAULT 0");
                 console.log('✅ Migration: Spalte sort_order zu Tabelle menu hinzugefügt.');
+            }
+            const [cols2] = await conn.query("SHOW COLUMNS FROM menu LIKE 'is_daily_special'");
+            if (cols2.length === 0) {
+                await conn.query("ALTER TABLE menu ADD COLUMN is_daily_special TINYINT(1) DEFAULT 0");
+                console.log('✅ Migration: Spalte is_daily_special zu Tabelle menu hinzugefügt.');
             }
         } catch(e) { console.warn('⚠️  Migration sort_order fehlgeschlagen:', e.message); }
 
@@ -211,8 +217,8 @@ const DB = {
         }));
     },
     addMenu: async (m) => {
-        await q('INSERT INTO menu (id, number, name, price, cat, `desc`, allergens, additives, image, active, available, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
-            [m.id, m.number||null, m.name, m.price, m.cat, m.desc, JSON.stringify(m.allergens||[]), JSON.stringify(m.additives||[]), m.image||null, m.active!==false?1:0, m.available!==false?1:0, m.updated_at||null]);
+        await q('INSERT INTO menu (id, number, name, price, cat, `desc`, allergens, additives, image, active, available, is_daily_special, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+            [m.id, m.number||null, m.name, m.price, m.cat, m.desc, JSON.stringify(m.allergens||[]), JSON.stringify(m.additives||[]), m.image||null, m.active!==false?1:0, m.available!==false?1:0, m.is_daily_special?1:0, m.updated_at||null]);
     },
     updateMenu: async (id, update) => {
         const rows = await q('SELECT * FROM menu WHERE id = ?', [id]);
@@ -224,10 +230,11 @@ const DB = {
         const rawAvail = update.available !== undefined ? update.available : (update.active !== undefined ? update.active : null);
         const activeVal = rawAvail !== null ? (rawAvail ? 1 : 0) : Number(existing.active);
         const availVal = rawAvail !== null ? (rawAvail ? 1 : 0) : (existing.available !== undefined ? Number(existing.available) : Number(existing.active));
+        const specialVal = update.is_daily_special !== undefined ? (update.is_daily_special ? 1 : 0) : Number(existing.is_daily_special || 0);
         const updatedAt = update.updated_at || existing.updated_at || null;
-        await q('UPDATE menu SET number=?, name=?, price=?, cat=?, `desc`=?, allergens=?, additives=?, image=?, active=?, available=?, updated_at=? WHERE id=?',
-            [merged.number||null, merged.name, merged.price, merged.cat, merged.desc, JSON.stringify(merged.allergens), JSON.stringify(merged.additives), merged.image||null, activeVal, availVal, updatedAt, id]);
-        return { ...merged, active: activeVal!==0, available: availVal!==0, updated_at: updatedAt };
+        await q('UPDATE menu SET number=?, name=?, price=?, cat=?, `desc`=?, allergens=?, additives=?, image=?, active=?, available=?, is_daily_special=?, updated_at=? WHERE id=?',
+            [merged.number||null, merged.name, merged.price, merged.cat, merged.desc, JSON.stringify(merged.allergens), JSON.stringify(merged.additives), merged.image||null, activeVal, availVal, specialVal, updatedAt, id]);
+        return { ...merged, active: activeVal!==0, available: availVal!==0, is_daily_special: specialVal!==0, updated_at: updatedAt };
     },
     deleteMenu: async (id) => q('DELETE FROM menu WHERE id = ?', [id]),
     saveMenu: async (items) => {
@@ -236,8 +243,8 @@ const DB = {
         try {
             await conn.query('DELETE FROM menu');
             for (const m of items) {
-                await conn.query('INSERT INTO menu (id, number, name, price, cat, `desc`, allergens, additives, image, active, available, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
-                    [m.id||Date.now().toString(), m.number||null, m.name, m.price, m.cat, m.desc, JSON.stringify(m.allergens||[]), JSON.stringify(m.additives||[]), m.image||null, m.active!==false?1:0, m.available!==false?1:0, m.updated_at||null]);
+                await conn.query('INSERT INTO menu (id, number, name, price, cat, `desc`, allergens, additives, image, active, available, is_daily_special, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                    [m.id||Date.now().toString(), m.number||null, m.name, m.price, m.cat, m.desc, JSON.stringify(m.allergens||[]), JSON.stringify(m.additives||[]), m.image||null, m.active!==false?1:0, m.available!==false?1:0, m.is_daily_special?1:0, m.updated_at||null]);
             }
             await conn.commit();
         } catch(e) { await conn.rollback(); throw e; } finally { conn.release(); }
