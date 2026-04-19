@@ -363,6 +363,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // --- MENU ---
     let activeCat = 'all';
     let searchQuery = '';
+    const favSet = new Set();
 
     // Kachel-Klick-Modus: wird aus homeData.cartClickMode gelesen
     // Mögliche Werte: 'button' (nur +), 'tile' (nur Kachel), 'both' (beides)
@@ -439,6 +440,36 @@ document.addEventListener('DOMContentLoaded', async () => {
         applyMenuFilter();
     };
 
+    window.toggleFav = (id, btn) => {
+        if (favSet.has(id)) {
+            favSet.delete(id);
+            btn.classList.remove('active');
+            btn.textContent = '🤍';
+        } else {
+            favSet.add(id);
+            btn.classList.add('active');
+            btn.textContent = '❤️';
+        }
+        // Favoriten-Tab in Kategorien aktualisieren
+        updateFavCatBtn();
+    };
+
+    function updateFavCatBtn() {
+        const catBar = document.getElementById('categories');
+        if (!catBar) return;
+        let favBtn = catBar.querySelector('.cat-btn--fav');
+        if (favSet.size > 0 && !favBtn) {
+            favBtn = document.createElement('button');
+            favBtn.className = 'cat-btn cat-btn--fav';
+            favBtn.innerHTML = `❤️ Favoriten (${favSet.size})`;
+            favBtn.onclick = function() { window.filterMenu('__fav__', this); };
+            catBar.appendChild(favBtn);
+        } else if (favBtn) {
+            if (favSet.size === 0) favBtn.remove();
+            else favBtn.innerHTML = `❤️ Favoriten (${favSet.size})`;
+        }
+    }
+
     function applyMenuFilter() {
         // Nur aktive UND verfügbare Gerichte anzeigen
         let items = menuItems.filter(i => i.active !== false && i.available !== false);
@@ -467,6 +498,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                     aliases.some(a => a.includes(term) || term.includes(a))
                 );
             });
+        }
+        if (activeCat === '__fav__') {
+            items = items.filter(i => favSet.has(String(i.id || i.name)));
         }
         renderMenu(items);
     }
@@ -520,6 +554,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                         ${tileClickable ? '<span class="dish-card-add-hint">+ Hinzufügen</span>' : ''}
                     </div>
                 </div>
+                <button class="fav-btn ${favSet.has(id) ? 'active' : ''}" 
+                         data-fav-id="${id}"
+                         onclick="event.stopPropagation(); window.toggleFav('${id}', this)"
+                         aria-label="Zu Favoriten hinzufügen">
+                    ${favSet.has(id) ? '❤️' : '🤍'}
+                </button>
             </div>`;
         }).join('');
 
