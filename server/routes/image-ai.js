@@ -130,26 +130,38 @@ module.exports = (requireAuth, DB) => {
 
             } else {
                 // Versuch 2: Gemini 2.0 Flash (kostenloser Fallback)
-                const flashRes = await fetch(
+                // Gemini Flash generiert nur 1 Bild pro Request -> 4 parallele Requests
+                const makeFlashRequest = () => fetch(
                     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${key}`,
                     {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             contents: [{ parts: [{ text: prompt }] }],
-                            generationConfig: { responseModalities: ['IMAGE'], numberOfImages: 4 }
+                            generationConfig: {
+                                responseModalities: ['TEXT', 'IMAGE']
+                            }
                         }),
-                        signal: AbortSignal.timeout(15000)
+                        signal: AbortSignal.timeout(20000)
                     }
                 );
-                const flashData = await flashRes.json();
 
-                if (!flashRes.ok || flashData.error) {
-                    const reason = flashData.error?.message || imagenData.error?.message || 'Unbekannter Fehler';
-                    // Prüfe ob es ein Auth/Billing Problem ist
+                const flashResponses = await Promise.all([
+                    makeFlashRequest(),
+                    makeFlashRequest(),
+                    makeFlashRequest(),
+                    makeFlashRequest()
+                ]);
+
+                const flashDataArray = await Promise.all(flashResponses.map(r => r.json()));
+
+                // Fehler prüfen (wenn kein einziges Bild generiert wurde)
+                const firstError = flashDataArray.find(d => d.error);
+                if (firstError && !flashDataArray.some(d => d.candidates?.[0]?.content?.parts?.some(p => p.inlineData))) {
+                    const reason = firstError.error?.message || imagenData.error?.message || 'Unbekannter Fehler';
                     const isBilling = reason.toLowerCase().includes('billing') || 
                                       reason.toLowerCase().includes('quota') ||
-                                      flashRes.status === 403 || imagenRes.status === 403;
+                                      flashResponses.some(r => r.status === 403);
                     return res.status(400).json({ 
                         success: false, 
                         reason: isBilling 
@@ -158,14 +170,15 @@ module.exports = (requireAuth, DB) => {
                     });
                 }
 
-                // Extrahiere Bilder aus Gemini Flash Response
-                const parts = flashData.candidates?.[0]?.content?.parts || [];
-                predictions = parts
+                // Extrahiere Bilder aus allen erfolgreichen Gemini Flash Responses
+                predictions = flashDataArray
+                    .flatMap(d => d.candidates?.[0]?.content?.parts || [])
                     .filter(p => p.inlineData?.mimeType?.startsWith('image/'))
                     .map(p => ({
                         bytesBase64Encoded: p.inlineData.data,
                         mimeType: p.inlineData.mimeType
                     }));
+                
                 usedModel = 'Google Gemini Flash';
             }
 
