@@ -909,6 +909,7 @@ a { text-decoration:none; color:inherit; cursor:pointer; }
 .nav-mobile-drawer a:hover { color: var(--blue); background: rgba(27,58,92,0.03); }
 
 @media (max-width: 768px) {
+    .nav { backdrop-filter: none; }
     .nav-hamburger { display: flex; }
 }
 
