@@ -14,6 +14,8 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="modules/qrcodes.js"></script>
     <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
@@ -131,6 +133,7 @@
                             <a class="nav-subitem" data-view="reservations" href="#reservations">Reservierungen</a>
                             <a class="nav-subitem nav-subitem--archive" data-view="archive" href="#archive">Archiv</a>
                             <a class="nav-subitem" data-view="tables"        href="#tables">Tische</a>
+                            <a class="nav-subitem" data-view="qrcodes"       href="#qrcodes"><i class="fas fa-qrcode" style="font-size: .8rem; margin-right: 5px; opacity: .7;"></i> QR-Codes</a>
                             <a class="nav-subitem" data-view="opening"       href="#opening">Öffnungszeiten</a>
                             <a class="nav-subitem" data-view="orders"        href="#orders" id="nav-orders">🔔 Küchen-Monitor</a>
                             <a class="nav-subitem" data-view="order-settings" href="#order-settings" id="nav-order-settings">🛒 Online-Bestellungen</a>

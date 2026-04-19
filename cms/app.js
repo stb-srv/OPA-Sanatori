@@ -210,6 +210,13 @@ async function switchView(view, tab = null) {
         case 'backup':
             await renderBackup(contentView, viewTitle);
             break;
+        case 'qrcodes':
+            if (window.AdminQR) {
+                window.AdminQR.render(contentView, viewTitle);
+            } else {
+                contentView.innerHTML = '<p>QR-Modul wird geladen...</p>';
+            }
+            break;
         case 'plugins-manager':
             contentView.innerHTML = `
                 <div class="glass-panel" style="padding:60px; text-align:center; opacity:.6;">
