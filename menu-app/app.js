@@ -520,6 +520,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         renderMenu(items);
     }
 
+    function getItemTranslation(item) {
+        const lang = window._opaCurrentLang || 'de';
+        if (lang === 'de') return { name: item.name, desc: item.desc };
+        const tr = item.translations?.[lang];
+        return {
+            name: tr?.name || item.name,
+            desc: tr?.desc || item.desc
+        };
+    }
+
     function renderMenu(items) {
         const list = document.getElementById('menu-list');
         const empty = document.getElementById('menu-empty');
@@ -541,6 +551,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         list.innerHTML = items.map(item => {
             const id    = String(item.id || item._id || item.name);
+            const { name: itemName, desc: itemDesc } = getItemTranslation(item);
             const price = parseFloat(item.price).toFixed(2);
             const allergenBadges = (item.allergens || []).length
                 ? `<span class="dish-badges">${item.allergens.map(a => `<span class="badge">${a}</span>`).join('')}</span>` : '';
@@ -549,21 +560,21 @@ document.addEventListener('DOMContentLoaded', async () => {
             return `
             <div class="dish-card${tileClickable ? ' dish-card--clickable' : ''}"
                  data-menu-item="${id}"
-                 data-item-name="${item.name.replace(/"/g, '&quot;')}"
+                 data-item-name="${itemName.replace(/"/g, '&quot;')}"
                  data-item-price="${price}"
                  ${tileClickable ? 'data-cart-tile="1"' : ''}>
                 <div class="dish-card-img">
                     ${(item.is_daily_special && window.OPA_DAILY_SPECIALS_ENABLED) ? `<span class="daily-special-badge">⭐ Heute</span>` : ''}
                     ${item.image
-                        ? `<img src="${item.image}" alt="${item.name}" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                        ? `<img src="${item.image}" alt="${itemName}" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
                            <span style="display:none"><i class="fas fa-utensils"></i> ${item.cat}</span>`
                         : `<span><i class="fas fa-utensils"></i> ${item.cat}</span>`
                     }
                 </div>
                 <div class="dish-card-body">
                     <span class="cat-tag">${item.cat}</span>
-                    <h3 data-item-name>${numberBadge}${item.name}</h3>
-                    ${item.desc ? `<p class="dish-desc">${item.desc}</p>` : ''}
+                    <h3 data-item-name>${numberBadge}${itemName}</h3>
+                    ${itemDesc ? `<p class="dish-desc">${itemDesc}</p>` : ''}
                     <div class="dish-card-footer">
                         <span class="dish-price">${price} €</span>
                         ${allergenBadges}
@@ -972,6 +983,19 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
         renderResCalendar();
+
+        // i18n initialisieren
+        if (window.OpaI18n) {
+            await OpaI18n.init();
+            const langMenu = document.getElementById('lang-dropdown-menu');
+            if (langMenu) langMenu.innerHTML = OpaI18n.renderDropdown();
+        }
+    };
+
+    // Hook für i18n — wird nach Sprachwechsel aufgerufen
+    window.OpaRender = () => {
+        renderCategories();
+        applyMenuFilter();
     };
 
     const resForm2 = document.getElementById('res-form');
