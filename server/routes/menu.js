@@ -260,7 +260,10 @@ module.exports = (requireAuth, requireLicense) => {
                 desc:         item.desc || '',
                 translations: item.translations || {}
             }));
-            res.json(exportData);
+            const json = JSON.stringify(exportData);
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.setHeader('Content-Length', Buffer.byteLength(json, 'utf8'));
+            res.end(json);
         } catch (e) {
             res.status(500).json({ success: false, reason: e.message });
         }
