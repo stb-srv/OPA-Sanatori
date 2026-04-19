@@ -96,63 +96,105 @@ module.exports = (requireAuth, DB) => {
     router.post('/generate', async (req, res) => {
         try {
             const { prompt } = req.body;
-            if (!prompt) return res.status(400).json({ success: false, reason: 'Prompt required' });
+            if (!prompt) return res.status(400).json({ success: false, reason: 'Prompt erforderlich' });
 
             const settings = await DB.getKV('settings', {});
-            const keys = settings.imageApiKeys || {};
-            const key = keys.googleAiKey;
+            const key = (settings.imageApiKeys || {}).googleAiKey;
+            if (!key) return res.status(400).json({ success: false, reason: 'Google AI Key nicht konfiguriert' });
 
-            if (!key) return res.status(400).json({ success: false, reason: 'Google AI key not configured' });
+            // Versuche zuerst Imagen 4 (Paid), dann Fallback auf Gemini Flash (Free)
+            let predictions = null;
+            let usedModel = '';
 
-            const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${key}`;
-            
-            const response = await fetch(endpoint, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    instances: [{ prompt }],
-                    parameters: { sampleCount: 4, aspectRatio: "1:1" }
-                })
-            });
+            // Versuch 1: Imagen 4 (für Paid-Accounts)
+            const imagenRes = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${key}`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        instances: [{ prompt }],
+                        parameters: { sampleCount: 4, aspectRatio: '1:1' }
+                    }),
+                    signal: AbortSignal.timeout(15000)
+                }
+            );
+            const imagenData = await imagenRes.json();
 
-            const data = await response.json();
+            if (imagenRes.ok && imagenData.predictions?.length) {
+                predictions = imagenData.predictions.map(p => ({
+                    bytesBase64Encoded: p.bytesBase64Encoded,
+                    mimeType: p.mimeType || 'image/png'
+                }));
+                usedModel = 'Google Imagen 4';
 
-            if (data.error) {
-                return res.status(400).json({ success: false, reason: data.error.message || 'Gemini API Error' });
+            } else {
+                // Versuch 2: Gemini 2.0 Flash (kostenloser Fallback)
+                const flashRes = await fetch(
+                    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${key}`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: prompt }] }],
+                            generationConfig: { responseModalities: ['IMAGE'], numberOfImages: 4 }
+                        }),
+                        signal: AbortSignal.timeout(15000)
+                    }
+                );
+                const flashData = await flashRes.json();
+
+                if (!flashRes.ok || flashData.error) {
+                    const reason = flashData.error?.message || imagenData.error?.message || 'Unbekannter Fehler';
+                    // Prüfe ob es ein Auth/Billing Problem ist
+                    const isBilling = reason.toLowerCase().includes('billing') || 
+                                      reason.toLowerCase().includes('quota') ||
+                                      flashRes.status === 403 || imagenRes.status === 403;
+                    return res.status(400).json({ 
+                        success: false, 
+                        reason: isBilling 
+                            ? 'Google AI: Kein Zugriff. Bitte Google Cloud Billing aktivieren oder Plan prüfen.'
+                            : `Google AI Fehler: ${reason}`
+                    });
+                }
+
+                // Extrahiere Bilder aus Gemini Flash Response
+                const parts = flashData.candidates?.[0]?.content?.parts || [];
+                predictions = parts
+                    .filter(p => p.inlineData?.mimeType?.startsWith('image/'))
+                    .map(p => ({
+                        bytesBase64Encoded: p.inlineData.data,
+                        mimeType: p.inlineData.mimeType
+                    }));
+                usedModel = 'Google Gemini Flash';
             }
 
-            if (!data.predictions || data.predictions.length === 0) {
-                return res.status(400).json({ success: false, reason: 'No images generated' });
+            if (!predictions || predictions.length === 0) {
+                return res.status(400).json({ success: false, reason: 'Keine Bilder generiert' });
             }
 
-            // Save predictions to uploads directory
+            // Base64 → Datei schreiben (kein DB-Bloat)
             const uploadsDir = path.join(__dirname, '..', '..', 'uploads');
             if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
-            const results = await Promise.all(data.predictions.map(async (pred) => {
-                const mime = pred.mimeType || 'image/png';
-                const ext  = mime.split('/')[1] || 'png';
-                const b64  = pred.bytesBase64Encoded;
-                const buf  = Buffer.from(b64, 'base64');
-                
-                // Unique filename
+            const results = predictions.map(pred => {
+                const ext = (pred.mimeType || 'image/png').split('/')[1] || 'png';
                 const filename = `ai_${crypto.randomBytes(8).toString('hex')}.${ext}`;
                 const filepath = path.join(uploadsDir, filename);
-                
-                // Write file
-                fs.writeFileSync(filepath, buf);
-                
-                const url = `/uploads/${filename}`;
+                fs.writeFileSync(filepath, Buffer.from(pred.bytesBase64Encoded, 'base64'));
                 return {
-                    url,
-                    thumb: url,
-                    credit: 'Generated by Google Gemini Imagen 3'
+                    url: `/uploads/${filename}`,
+                    thumb: `/uploads/${filename}`,
+                    credit: `Generiert mit ${usedModel}`
                 };
-            }));
+            });
 
-            res.json({ success: true, results });
+            res.json({ success: true, results, model: usedModel });
 
         } catch (err) {
+            if (err.name === 'TimeoutError') {
+                return res.status(504).json({ success: false, reason: 'Zeitüberschreitung – Google AI hat nicht geantwortet (>15s)' });
+            }
             console.error('[Image Generate Error]', err);
             res.status(500).json({ success: false, reason: err.message });
         }
