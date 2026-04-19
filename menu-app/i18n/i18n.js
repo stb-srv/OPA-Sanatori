@@ -111,13 +111,15 @@ window.OpaI18n = (function () {
     }
 
     function renderDropdown() {
-        return Object.values(LANGUAGES).map(l => `
+        const handle = '<div class="lang-sheet-handle"></div>';
+        const options = Object.values(LANGUAGES).map(l => `
             <button class="lang-option ${l.code === currentLang ? 'active' : ''}"
                     onclick="OpaI18n.setLang('${l.code}'); document.getElementById('lang-dropdown').classList.remove('open');">
                 <span class="lang-flag">${l.flag}</span>
                 <span class="lang-label">${l.label}</span>
                 ${l.code === currentLang ? '<i class="fas fa-check" style="margin-left:auto;color:var(--gold,#C8A96E);"></i>' : ''}
             </button>`).join('');
+        return handle + options;
     }
 
     async function init() {
