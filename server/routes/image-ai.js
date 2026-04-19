@@ -108,7 +108,7 @@ module.exports = (requireAuth, DB) => {
 
             // Versuch 1: Imagen 4 (für Paid-Accounts)
             const imagenRes = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${key}`,
+                `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-fast-generate-001:predict?key=${key}`,
                 {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -126,13 +126,13 @@ module.exports = (requireAuth, DB) => {
                     bytesBase64Encoded: p.bytesBase64Encoded,
                     mimeType: p.mimeType || 'image/png'
                 }));
-                usedModel = 'Google Imagen 4';
+                usedModel = 'Google Imagen 4 Fast';
 
             } else {
-                // Versuch 2: Gemini 2.0 Flash (kostenloser Fallback)
+                // Versuch 2: Gemini 2.5 Flash Image (kostenloser Fallback)
                 // Gemini Flash generiert nur 1 Bild pro Request -> 4 parallele Requests
                 const makeFlashRequest = () => fetch(
-                    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${key}`,
+                    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${key}`,
                     {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -179,7 +179,7 @@ module.exports = (requireAuth, DB) => {
                         mimeType: p.inlineData.mimeType
                     }));
                 
-                usedModel = 'Google Gemini Flash';
+                usedModel = 'Google Gemini 2.5 Flash Image';
             }
 
             if (!predictions || predictions.length === 0) {
