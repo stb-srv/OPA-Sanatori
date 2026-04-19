@@ -818,8 +818,9 @@ function attachMenuHandlers(container, menu, categories, allergens, additives, c
                 const reader = new FileReader();
                 reader.onload = async (ev) => {
                     try {
-                        const data = JSON.parse(ev.target.result);
-                        if (!Array.isArray(data)) throw new Error('Array erwartet');
+                        let parsed = JSON.parse(ev.target.result);
+                        const data = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.dishes) ? parsed.dishes : null);
+                        if (!data) throw new Error('Kein gültiges Array gefunden');
                         
                         if (await showConfirm('\u00dcbersetzungen importieren?', `${data.length} Gerichte in der Datei gefunden. Vorhandene \u00dcbersetzungen werden ggf. erg\u00e4nzt.`)) {
                             const res = await apiPost('menu/import-translations', data);
@@ -836,7 +837,7 @@ function attachMenuHandlers(container, menu, categories, allergens, additives, c
                                 showToast(res?.reason || 'Import fehlgeschlagen.', 'error');
                             }
                         }
-                    } catch (err) { showToast('Ung\u00fcltige Datei oder Format', 'error'); }
+                    } catch (err) { console.error('[Import Translations]', err); showToast('Ung\u00fcltige Datei oder Format: ' + err.message, 'error'); }
                 };
                 reader.readAsText(file);
             };
