@@ -847,21 +847,90 @@ function attachMenuHandlers(container, menu, categories, allergens, additives, c
                         confirmMsg += ` in der Datei gefunden. Vorhandene Übersetzungen werden ergänzt.`;
 
                         if (await showConfirm(confirmTitle, confirmMsg)) {
-                            const res = await apiPost('menu/import-translations', parsed);
-                            if (res && res.success) {
+                            // Create Progress Modal
+                            const progressOverlay = document.createElement('div');
+                            progressOverlay.className = 'modal-overlay';
+                            progressOverlay.style.zIndex = '11000';
+                            progressOverlay.innerHTML = `
+                                <div class="modal-glass" style="max-width:400px; text-align:center;">
+                                    <h3 style="margin-bottom:15px;">Importiere Übersetzungen...</h3>
+                                    <div style="background:rgba(0,0,0,0.1); height:12px; border-radius:6px; overflow:hidden; margin-bottom:10px;">
+                                        <div id="import-progress-bar" style="width:0%; height:100%; background:var(--accent,#C8A96E); transition:width .3s;"></div>
+                                    </div>
+                                    <div id="import-progress-text" style="font-size:0.85rem; opacity:0.7;">0% (0 / ${dishCount + (catCount > 0 ? 1 : 0)})</div>
+                                </div>
+                            `;
+                            document.body.appendChild(progressOverlay);
+
+                            const progressBar = progressOverlay.querySelector('#import-progress-bar');
+                            const progressText = progressOverlay.querySelector('#import-progress-text');
+
+                            const updateProgress = (done, total) => {
+                                const percent = Math.round((done / total) * 100);
+                                progressBar.style.width = percent + '%';
+                                progressText.textContent = `${percent}% (${done} / ${total})`;
+                            };
+
+                            let totalSteps = 0;
+                            let completedSteps = 0;
+                            let totalUpdatedDishes = 0;
+                            let totalUpdatedCats = 0;
+                            let totalSkipped = 0;
+                            let allNotFound = [];
+
+                            // Chunks configuration
+                            const CHUNK_SIZE = 20;
+                            const dishChunks = [];
+                            for (let i = 0; i < dishes.length; i += CHUNK_SIZE) {
+                                dishChunks.push(dishes.slice(i, i + CHUNK_SIZE));
+                            }
+                            
+                            totalSteps = dishChunks.length + (categories.length > 0 ? 1 : 0);
+
+                            try {
+                                // 1. Categories (if any)
+                                if (categories.length > 0) {
+                                    const res = await apiPost('menu/import-translations', { categories, dishes: [] });
+                                    if (res && res.success) {
+                                        totalUpdatedCats += res.updated_categories || 0;
+                                    }
+                                    completedSteps++;
+                                    updateProgress(completedSteps, totalSteps);
+                                }
+
+                                // 2. Dishes in chunks
+                                for (const chunk of dishChunks) {
+                                    const res = await apiPost('menu/import-translations', { categories: [], dishes: chunk });
+                                    if (res && res.success) {
+                                        totalUpdatedDishes += res.updated || 0;
+                                        totalSkipped += res.skipped || 0;
+                                        if (res.not_found) allNotFound.push(...res.not_found);
+                                    }
+                                    completedSteps++;
+                                    updateProgress(completedSteps, totalSteps);
+                                }
+
+                                // Finalize
+                                progressOverlay.remove();
                                 let msg = `✅ Import erfolgreich! `;
-                                msg += `(${res.updated} Gerichte`;
-                                if (res.updated_categories > 0) msg += `, ${res.updated_categories} Kategorien`;
+                                msg += `(${totalUpdatedDishes} Gerichte`;
+                                if (totalUpdatedCats > 0) msg += `, ${totalUpdatedCats} Kategorien`;
                                 msg += ` aktualisiert)`;
                                 
-                                if (res.skipped > 0) msg += ` | ⚠️ ${res.skipped} übersprungen`;
-                                if (res.not_found && res.not_found.length > 0) msg += `. Nicht gefunden: ${res.not_found.slice(0,2).join(', ')}...`;
+                                if (totalSkipped > 0) msg += ` | ⚠️ ${totalSkipped} übersprungen`;
+                                if (allNotFound.length > 0) {
+                                    const uniqueNotFound = [...new Set(allNotFound)];
+                                    msg += `. Nicht gefunden: ${uniqueNotFound.slice(0,2).join(', ')}...`;
+                                }
                                 
-                                showToast(msg, res.not_found?.length > 0 ? 'warning' : 'success');
+                                showToast(msg, allNotFound.length > 0 ? 'warning' : 'success');
                                 cachedMenuData = null;
                                 renderMenu(container, document.getElementById('view-title'), 'dishes', true);
-                            } else {
-                                showToast(res?.reason || 'Import fehlgeschlagen.', 'error');
+
+                            } catch (err) {
+                                progressOverlay.remove();
+                                console.error('[Import Progress Error]', err);
+                                showToast('Fehler beim Import: ' + err.message, 'error');
                             }
                         }
                     } catch (err) { 
