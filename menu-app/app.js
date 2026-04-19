@@ -720,8 +720,31 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     window.setLegalView = (type) => {
         if (!homeData.legal) return;
-        document.getElementById('legal-title').textContent = type === 'impressum' ? 'Impressum' : 'Datenschutzerklärung';
-        document.getElementById('legal-content').textContent = type === 'impressum' ? homeData.legal.impressum : homeData.legal.privacy;
+        
+        // Titel setzen
+        const titleEl = document.getElementById('legal-title');
+        if (titleEl) titleEl.textContent = type === 'impressum' ? 'Impressum' : 'Datenschutzerklärung';
+        
+        // Inhalt setzen (innerHTML für HTML-Formatierung)
+        const contentEl = document.getElementById('legal-content');
+        if (contentEl) {
+            const text = type === 'impressum' ? homeData.legal.impressum : homeData.legal.privacy;
+            // Zeilenumbrüche in <br> umwandeln falls plain text
+            contentEl.innerHTML = text ? text.replace(/\n/g, '<br>') : '';
+        }
+        
+        // Button-Styling umschalten
+        const btnImpressum = document.querySelector('#view-legal .btn[onclick*="impressum"]');
+        const btnPrivacy   = document.querySelector('#view-legal .btn[onclick*="privacy"]');
+        if (btnImpressum && btnPrivacy) {
+            if (type === 'impressum') {
+                btnImpressum.classList.remove('outline');
+                btnPrivacy.classList.add('outline');
+            } else {
+                btnPrivacy.classList.remove('outline');
+                btnImpressum.classList.add('outline');
+            }
+        }
     };
 
 
