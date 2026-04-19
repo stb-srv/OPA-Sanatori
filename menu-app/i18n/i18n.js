@@ -58,16 +58,19 @@ window.OpaI18n = (function () {
 
     function setDropdownOpen(open) {
         const dd = document.getElementById('lang-dropdown');
+        const menu = document.getElementById('lang-dropdown-menu');
         const backdrop = document.getElementById('lang-backdrop');
-        if (!dd) return;
+        if (!dd || !menu) return;
         if (open) {
             dd.classList.add('open');
+            menu.classList.add('open');
             if (window.innerWidth <= 768) {
                 if (backdrop) backdrop.style.display = 'block';
                 document.body.style.overflow = 'hidden';
             }
         } else {
             dd.classList.remove('open');
+            menu.classList.remove('open');
             if (backdrop) backdrop.style.display = 'none';
             document.body.style.overflow = '';
         }
