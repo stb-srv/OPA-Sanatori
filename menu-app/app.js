@@ -78,6 +78,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- INIT ---
     async function init() {
+        // i18n zuerst initialisieren, damit Branding-Texte übersetzt werden können
+        if (window.OpaI18n) {
+            await OpaI18n.init();
+        }
+
         const hp = await get('homepage');
         if (hp) {
             homeData = hp;
@@ -247,12 +252,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             const hash = window.location.hash?.replace('#', '').trim();
             window.switchTab(hash || 'home');
         });
-
-        // i18n initialisieren
-        if (window.OpaI18n) {
-            await OpaI18n.init();
-            // Dropdown ist bereits in init() befüllt
-        }
     }
 
     // --- BRANDING ---
