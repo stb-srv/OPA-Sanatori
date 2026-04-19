@@ -664,7 +664,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         const hero = document.getElementById('hero-section');
         if (hero) hero.style.display = (id === 'home') ? 'flex' : 'none';
         const promo = document.getElementById('promo-section');
-        if (promo) promo.style.display = (id === 'home') ? 'block' : 'none';
+        if (promo) {
+            const promoAllowed = homeData?.promotionEnabled !== false && homeData?.promotionText;
+            promo.style.display = (id === 'home' && promoAllowed) ? 'block' : 'none';
+        }
 
         let targetId = `view-${id}`;
         if (id.startsWith('custom-')) { targetId = 'view-custom'; renderCustomPage(id); }
