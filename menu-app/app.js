@@ -319,15 +319,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const closeMins = ch * 60 + cm;
                     if (nowMins >= openMins && nowMins < closeMins) {
                         if (closeMins - nowMins <= 60) {
-                            badge.textContent = `Schließt ${todayEntry.close} Uhr`;
+                            badge.textContent = OpaI18n ? OpaI18n.t('opening_hours.closes_soon', { time: todayEntry.close }) : `Schließt ${todayEntry.close} Uhr`;
                             badge.style.background = '#f59e0b';
                         } else {
-                            badge.textContent = `Geöffnet bis ${todayEntry.close}`;
+                            badge.textContent = OpaI18n ? OpaI18n.t('opening_hours.open_until', { time: todayEntry.close }) : `Geöffnet bis ${todayEntry.close}`;
                         }
                     } else {
                         badge.textContent = nowMins < openMins
-                            ? `Öffnet ${todayEntry.open} Uhr`
-                            : 'Heute geschlossen';
+                            ? (OpaI18n ? OpaI18n.t('opening_hours.opens_at', { time: todayEntry.open }) : `Öffnet ${todayEntry.open} Uhr`)
+                            : (OpaI18n ? OpaI18n.t('opening_hours.closed_today') : 'Heute geschlossen');
                         badge.style.opacity = '.7';
                     }
                 }
