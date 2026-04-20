@@ -73,8 +73,9 @@ function renderOrderCards() {
             <div class="order-items">
                 ${o.items.map(i => `
                     <div class="order-item">
-                        <span class="count">${i.count}x</span>
+                        <span class="count">${i.quantity}x</span>
                         <span class="name">${i.name}</span>
+                        ${i.extras ? `<br><small class="item-note" style="color:#6b7280;"><i class="fas fa-plus-circle" style="margin-right:3px;"></i>${Array.isArray(i.extras) ? i.extras.join(', ') : i.extras}</small>` : ''}
                         ${i.note ? `<br><small class="item-note">${i.note}</small>` : ''}
                     </div>
                 `).join('')}
@@ -112,7 +113,7 @@ function initSocket() {
             if (grid) {
                 grid.innerHTML = renderOrderCards();
                 document.getElementById('no-orders')?.remove();
-                showToast(`Neue Bestellung von Tisch ${order.table}!`);
+                showToast(`Neue Bestellung von Tisch ${order.tableNumber || order.table || '?'}!`);
                 playOrderSound();
             }
         });

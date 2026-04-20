@@ -15,7 +15,7 @@ module.exports = (requireAuth, io) => {
         try {
             const newOrder = { ...req.body, id: Date.now().toString(), timestamp: new Date().toISOString(), status: 'pending' };
             await DB.addOrder(newOrder);
-            io.emit('new-order', newOrder);
+            io.emit('new_order', newOrder);
             res.json({ success: true, order: newOrder });
         } catch(e) { res.status(500).json({ success: false, reason: e.message }); }
     });
