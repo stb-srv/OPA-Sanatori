@@ -76,7 +76,7 @@ function renderOrderCards() {
                         <span class="count">${i.quantity}x</span>
                         <span class="name">${i.name}</span>
                         ${i.extras ? `<br><small class="item-note" style="color:#6b7280;"><i class="fas fa-plus-circle" style="margin-right:3px;"></i>${Array.isArray(i.extras) ? i.extras.join(', ') : i.extras}</small>` : ''}
-                        ${i.note ? `<br><small class="item-note">${i.note}</small>` : ''}
+                        ${i.note ? `<div class="kitchen-item-note" style="margin-top:4px; font-size:.78rem; font-weight:700; color:var(--primary, #C8A96E);">📝 ${escHtml(i.note)}</div>` : ''}
                     </div>
                 `).join('')}
                 
@@ -92,6 +92,11 @@ function renderOrderCards() {
             </div>
         </div>`;
     }).join('');
+}
+
+function escHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
 function initSocket() {
