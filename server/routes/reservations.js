@@ -87,6 +87,19 @@ module.exports = (requireAuth, requireLicense) => {
                 submittedAt: new Date().toISOString(),
                 ip: (req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split('.').slice(0,2).join('.') + '.x.x'
             };
+            const payload = { date, time, areaId };
+            // Race Condition Guard: nochmalige Prüfung direkt vor dem Speichern
+            const doubleCheck = await DB.getReservations();
+            const slotTaken = doubleCheck.some(r =>
+                r.date === payload.date &&
+                r.start_time === payload.time &&
+                r.areaId === payload.areaId &&
+                r.status.toLowerCase() !== 'cancelled'
+            );
+            if (slotTaken) {
+                return res.status(409).json({ success: false, reason: 'Dieser Zeitslot wurde soeben von jemand anderem gebucht. Bitte wähle einen anderen.' });
+            }
+
             await DB.addReservation(newRes);
             Mailer.sendConfirmation(newRes, DB).catch(e => console.error('Mailer error:', e));
             res.json({ success: true, reservation: newRes, isInquiry: !result.success });
