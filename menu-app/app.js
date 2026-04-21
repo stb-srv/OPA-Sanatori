@@ -469,9 +469,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     window.filterMenu = (cat, btn) => {
+        const isAlreadyActive = btn.classList.contains('active');
         document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        activeCat = cat === 'Alle' ? 'all' : cat;
+        if (isAlreadyActive && cat !== 'Alle') {
+            // Filter abwählen → zurück zu "Alle"
+            const allBtn = document.querySelector('#categories .cat-btn');
+            if (allBtn) allBtn.classList.add('active');
+            activeCat = 'all';
+        } else {
+            btn.classList.add('active');
+            activeCat = cat === 'Alle' ? 'all' : cat;
+        }
         applyMenuFilter();
     };
 
