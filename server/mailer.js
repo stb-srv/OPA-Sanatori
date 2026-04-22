@@ -310,6 +310,9 @@ const Mailer = {
     }
 };
 
+    }
+}
+
 /**
  * Hilfsfunktion: Sendet eine E-Mail mit bis zu 3 Versuchen (Exponential Backoff)
  */
@@ -329,4 +332,77 @@ async function sendWithRetry(transporter, mailOptions, maxAttempts = 3) {
     }
 }
 
+/**
+ * Hilfsfunktion: Umhüllt den Content mit einem Standard-HTML-Rahmen.
+ */
+function wrapHtml(restaurantName, content) {
+    return `
+        <div style="font-family: sans-serif; max-width: 600px; padding: 20px; border: 1px solid #eee; border-radius: 12px;">
+            ${content}
+            <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;">
+            <p style="font-size: 12px; color: #718096;">Herzliche Grüße, ${restaurantName}</p>
+        </div>
+    `;
+}
+
+/**
+ * Basale Mail-Send-Funktion.
+ */
+async function sendMail({ to, subject, html }, smtp) {
+    const transporter = nodemailer.createTransport({
+        host: smtp.host,
+        port: smtp.port || 465,
+        secure: smtp.secure !== false,
+        auth: {
+            user: smtp.user,
+            pass: smtp.pass
+        },
+        tls: { rejectUnauthorized: false }
+    });
+    await transporter.sendMail({
+        from: smtp.from || smtp.user,
+        to,
+        subject,
+        html
+    });
+}
+
+/**
+ * Sendet dem Kunden eine E-Mail wenn eine Bestellung bestätigt oder abgelehnt wird.
+ */
+async function sendOrderStatusMail(order, DB) {
+    const settings = await DB.getKV('settings', {});
+    const branding = await DB.getKV('branding', {});
+    const restaurantName = branding.name || 'Unser Restaurant';
+    const smtp = settings.smtp || {};
+    if (!smtp.host || !order.customerEmail) return;
+
+    const isConfirmed = order.status === 'confirmed';
+    const typeLabel   = order.type === 'pickup' ? 'Abholung' : 'Lieferung';
+
+    const subject = isConfirmed
+        ? `✅ Deine ${typeLabel} wurde bestätigt – ${restaurantName}`
+        : `❌ Deine Bestellung wurde abgelehnt – ${restaurantName}`;
+
+    const body = isConfirmed ? `
+        <h2 style="color:#22c55e;">Bestellung bestätigt! 🎉</h2>
+        <p>Hallo ${order.customerName || 'Gast'},</p>
+        <p>deine <strong>${typeLabel}</strong> wurde von uns bestätigt und wird jetzt vorbereitet.</p>
+        ${order.estimatedTime ? `<p><strong>Voraussichtliche Zeit:</strong> ${order.estimatedTime}</p>` : ''}
+        ${order.type === 'pickup' ? `<p>Du kannst deine Bestellung ab der oben genannten Zeit abholen.</p>` : `<p>Wir liefern dir deine Bestellung so schnell wie möglich.</p>`}
+        <hr>
+        <p style="font-size:0.85em; color:#6b7280;">Bestell-Referenz: #${order.id}</p>
+    ` : `
+        <h2 style="color:#ef4444;">Bestellung abgelehnt</h2>
+        <p>Hallo ${order.customerName || 'Gast'},</p>
+        <p>leider konnten wir deine Bestellung diesmal nicht annehmen.</p>
+        <p>Bitte ruf uns an oder versuche es zu einem anderen Zeitpunkt erneut.</p>
+        <hr>
+        <p style="font-size:0.85em; color:#6b7280;">Bestell-Referenz: #${order.id}</p>
+    `;
+
+    await sendMail({ to: order.customerEmail, subject, html: wrapHtml(restaurantName, body) }, smtp);
+}
+
+Mailer.sendOrderStatusMail = sendOrderStatusMail;
 module.exports = Mailer;
