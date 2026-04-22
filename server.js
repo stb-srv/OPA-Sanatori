@@ -253,7 +253,8 @@ const checkReminders = async () => {
     try {
         const now = new Date();
         // Nur um 10 Uhr morgens prüfen
-        if (now.getHours() !== 10) return;
+        const nowHour = parseInt(new Intl.DateTimeFormat('de-DE', { hour: 'numeric', hour12: false, timeZone: 'Europe/Berlin' }).format(now), 10);
+        if (nowHour !== 10) return;
         
         const reservations = await DB.getReservations();
         const tomorrow = new Date(now);
