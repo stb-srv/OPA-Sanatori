@@ -365,6 +365,8 @@
             }))
         };
 
+        console.log('[OPA Cart] submitOrder mode:', mode, 'payload.type:', payload.type);
+
         if (mode === 'dine_in') {
             const table = document.getElementById('co-table')?.value.trim();
             const phone = document.getElementById('co-phone')?.value.trim();
