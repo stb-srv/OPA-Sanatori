@@ -170,7 +170,13 @@ async function switchView(view, tab = null) {
     // Breadcrumb aktualisieren
     const breadcrumbMap = {
         stats:          ['Dashboard'],
-        menu:           ['Einstellungen', 'Speisekarte'],
+        menu: ['Speisekarte', tab ? {
+            dishes: 'Gerichte',
+            categories: 'Kategorien',
+            allergens: 'Allergene',
+            additives: 'Zusatzstoffe',
+            daily: 'Tagesgerichte',
+        }[tab] || 'Gerichte' : 'Gerichte'],
         reservations:   ['Reservierungen'],
         archive:        ['Reservierungen', 'Archiv'],
         orders:         ['Bestellungen'],
@@ -183,6 +189,7 @@ async function switchView(view, tab = null) {
         'plugins-manager': ['System', 'Erweiterungen'],
         settings:       ['Einstellungen', tab ? {
             license: 'Lizenz & Module',
+            branding: 'Branding & Design',
             restaurant: 'Grundeinstellungen',
             smtp: 'E-Mail / SMTP',
             ai: 'KI-Bildgenerierung',
@@ -190,6 +197,7 @@ async function switchView(view, tab = null) {
             location: 'Standort & Karte',
             closures: 'Urlaub & Betriebssperre',
             reservations: 'Reservierungseinstellungen',
+            'email-templates': 'E-Mail Templates',
             'order-emails': 'E-Mail Templates',
         }[tab] || tab : 'Einstellungen'],
     };
