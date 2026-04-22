@@ -26,3 +26,7 @@ npm-debug.log*
 
 # Scripts that should stay local
 # (deploy/start scripts are kept in repo intentionally for convenience)
+
+# Temporäre Dateien
+tmp/
+*.tmp
