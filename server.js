@@ -173,6 +173,10 @@ app.post('/api/setup', async (req, res) => {
     if (CONFIG.SETUP_COMPLETE) return res.status(403).json({ success: false, reason: 'Already configured' });
     try {
         const { restaurantName, licenseServer, adminSecret, smtp, adminUser, adminPass, adminEmail } = req.body;
+
+        if (adminPass && adminPass.length < 12) {
+            return res.status(400).json({ success: false, reason: 'Admin-Passwort muss mindestens 12 Zeichen lang sein.' });
+        }
         const licenseServerUrl = (licenseServer || 'https://licens-prod.stb-srv.de').replace(/\/+$/, '');
         const trialPlan = PLAN_DEFINITIONS['FREE'];
         const trialLicense = {
