@@ -86,8 +86,8 @@ module.exports = (requireAuth, io) => {
             // Socket-Event an alle Clients (inkl. Gäste-Polling)
             io.emit('order-updated', { id: updated.id, orderToken: updated.orderToken, status: updated.status, estimatedTime: updated.estimatedTime });
 
-            // E-Mail an Kunden bei Bestätigung oder Ablehnung
-            if (['confirmed', 'cancelled'].includes(status) && updated.customerEmail) {
+            // E-Mail an Kunden bei Bestätigung, Ablehnung oder Abholbereitschaft
+            if (['confirmed', 'cancelled', 'ready'].includes(status) && updated.customerEmail) {
                 Mailer.sendOrderStatusMail(updated, DB).catch(e =>
                     logger.error({ err: e }, 'Order Status Mailer Fehler')
                 );
