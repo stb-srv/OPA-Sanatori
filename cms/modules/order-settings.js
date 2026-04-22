@@ -2,6 +2,8 @@
  * OPA-CMS – Online-Bestellungen Einstellungen
  */
 
+const escHtml = (s) => String(s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
 export async function initOrderSettings(container, api, license) {
     const hasModule = license && license.modules && license.modules.online_orders;
 
@@ -27,13 +29,13 @@ export async function initOrderSettings(container, api, license) {
         return;
     }
 
-    let orderConfig = {};
+    let settings = {};
     try {
-        const res = await api.get('settings');
-        orderConfig = (res && res.orderConfig) || {};
+        settings = await api.get('settings') || {};
     } catch (e) {
-        console.warn('orderConfig konnte nicht geladen werden', e.message);
+        console.warn('settings konnte nicht geladen werden', e.message);
     }
+    const orderConfig = settings.orderConfig || {};
 
     const checked = (key, def = false) =>
         orderConfig[key] === true ? 'checked' : (orderConfig[key] === false ? '' : (def ? 'checked' : ''));
@@ -182,6 +184,44 @@ export async function initOrderSettings(container, api, license) {
             </span>
         </div>
 
+        <!-- E-Mail Templates für Bestellungen -->
+        <div class="glass-panel" style="padding:28px; margin-top:24px; margin-bottom:24px;">
+            <h3 style="margin-bottom:4px;">✉️ Bestellungs E-Mail Templates</h3>
+            <p style="color:var(--text-muted); font-size:.82rem; margin-bottom:20px;">
+                Verfügbare Platzhalter: <code>{{customerName}}</code> <code>{{restaurantName}}</code>
+                <code>{{estimatedTime}}</code> <code>{{total}}</code> <code>{{statusUrl}}</code>
+            </p>
+
+            ${['tpl_order_confirmed', 'tpl_order_cancelled', 'tpl_order_ready'].map(key => {
+                const labels = {
+                    tpl_order_confirmed: { icon: '✅', title: 'Bestätigung' },
+                    tpl_order_cancelled: { icon: '❌', title: 'Ablehnung' },
+                    tpl_order_ready:     { icon: '🎉', title: 'Abholbereit' },
+                };
+                const l = labels[key];
+                const val = (settings.emailTemplates || {})[key] || {};
+                return `
+                <div style="margin-bottom:24px; padding-bottom:24px; border-bottom:1px solid rgba(0,0,0,.07);">
+                    <h4 style="margin-bottom:12px;">${l.icon} ${l.title}</h4>
+                    <label class="form-label">Betreff
+                        <input class="form-input" type="text" id="et-${key}-subject"
+                            value="${escHtml(val.subject || '')}"
+                            placeholder="Standard-Betreff wird verwendet wenn leer">
+                    </label>
+                    <label class="form-label" style="margin-top:10px;">E-Mail Text (HTML erlaubt)
+                        <textarea class="form-input" id="et-${key}-body" rows="5"
+                            placeholder="Standard-Template wird verwendet wenn leer"
+                            style="font-family:monospace; font-size:.82rem;">${escHtml(val.body || '')}</textarea>
+                    </label>
+                    <button class="btn-small btn-secondary" onclick="previewOrderEmail('${key}')" style="margin-top:8px; margin-right:8px;">
+                        👁 Vorschau
+                    </button>
+                </div>`;
+            }).join('')}
+
+            <button class="btn-primary" id="save-order-email-tpl">💾 Templates speichern</button>
+        </div>
+
         <div style="display:flex; align-items:center; gap:16px;">
             <button class="btn-primary" id="os-save"><i class="fas fa-save"></i> Einstellungen speichern</button>
             <span id="os-feedback" style="font-size:.82rem; font-weight:600;"></span>
@@ -220,4 +260,30 @@ export async function initOrderSettings(container, api, license) {
         }
         setTimeout(() => { feedback.textContent = ''; }, 3000);
     });
+
+    // Email Template Logic
+    container.querySelector('#save-order-email-tpl').addEventListener('click', async () => {
+        const templates = settings.emailTemplates || {};
+        for (const key of ['tpl_order_confirmed', 'tpl_order_cancelled', 'tpl_order_ready']) {
+            templates[key] = {
+                subject: container.querySelector(`#et-${key}-subject`)?.value.trim() || '',
+                body:    container.querySelector(`#et-${key}-body`)?.value.trim() || '',
+            };
+        }
+        settings.emailTemplates = templates;
+        try {
+            await api.post('settings', { emailTemplates: templates });
+            if (window.showToast) showToast('✅ E-Mail Templates gespeichert.');
+            else alert('✅ E-Mail Templates gespeichert.');
+        } catch (e) {
+            alert('❌ Fehler: ' + e.message);
+        }
+    });
+
+    window.previewOrderEmail = (key) => {
+        const body = container.querySelector(`#et-${key}-body`)?.value || '(Standard-Template)';
+        const win = window.open('', '_blank');
+        win.document.write(`<html><body style="font-family:sans-serif;padding:20px;">${body}</body></html>`);
+        win.document.close();
+    };
 }
