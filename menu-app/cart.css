@@ -126,54 +126,125 @@
 .opa-cart-empty p { margin: 0 0 6px; font-weight: 600; }
 .opa-cart-empty small { font-size: .85rem; opacity: .7; }
 
-/* Cart Items */
+/* ── Cart Items – vertikales Card-Layout ── */
 .opa-cart-item {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 12px 0;
-    border-bottom: 1px solid rgba(0,0,0,.06);
+    flex-direction: column;
+    gap: 0;
+    padding: 14px 0;
+    border-bottom: 1px solid rgba(0,0,0,.07);
 }
 .opa-cart-item:last-child { border-bottom: none; }
-.opa-cart-item-info {
+
+/* Zeile 1: Nummer + Name + Schließen-Icon */
+.opa-cart-item-row1 {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+}
+.opa-cart-item-name-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
     flex: 1;
     min-width: 0;
 }
+.opa-cart-item-number {
+    font-size: .72rem;
+    font-weight: 800;
+    color: var(--primary, #C8A96E);
+    opacity: .8;
+    flex-shrink: 0;
+}
 .opa-cart-item-name {
-    display: block;
-    font-weight: 600;
+    font-weight: 700;
     font-size: .95rem;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    line-height: 1.3;
+    word-break: break-word;
+}
+
+/* Zeile 2: Beschreibung */
+.opa-cart-item-desc {
+    font-size: .76rem;
+    color: var(--text-muted, #9ca3af);
+    margin-top: 3px;
+    line-height: 1.5;
+    padding-left: 2px;
+}
+
+/* Zeile 3: Notiz-Input */
+.opa-cart-item-note-wrap {
+    margin-top: 8px;
+}
+.opa-cart-item-note {
+    width: 100%;
+    box-sizing: border-box;
+    background: rgba(0,0,0,.03);
+    border: 1px dashed rgba(0,0,0,.15);
+    border-radius: 8px;
+    padding: 7px 11px;
+    font-size: .78rem;
+    color: inherit;
+    outline: none;
+    transition: border-color .2s, background .2s;
+    font-family: inherit;
+    resize: none;
+}
+.opa-cart-item-note::placeholder { opacity: .4; }
+.opa-cart-item-note:focus {
+    border-color: var(--primary, #C8A96E);
+    border-style: solid;
+    background: rgba(200,169,110,.04);
+}
+
+/* Zeile 4: Preis + Stepper */
+.opa-cart-item-row4 {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 10px;
 }
 .opa-cart-item-price {
-    display: block;
-    font-size: .85rem;
-    opacity: .6;
-    margin-top: 2px;
+    font-size: .9rem;
+    font-weight: 800;
+    color: var(--primary, #C8A96E);
+}
+.opa-cart-item-price small {
+    font-weight: 400;
+    opacity: .5;
+    font-size: .72rem;
+    margin-left: 3px;
 }
 .opa-cart-item-controls {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 0;
+    background: rgba(0,0,0,.05);
+    border-radius: 24px;
+    padding: 2px;
 }
 .opa-cart-qty-btn {
-    width: 28px;
-    height: 28px;
+    width: 30px;
+    height: 30px;
     border-radius: 50%;
-    border: 1px solid rgba(0,0,0,.15);
+    border: none;
     background: none;
     cursor: pointer;
-    font-size: 1rem;
+    font-size: 1.1rem;
     display: flex;
     align-items: center;
     justify-content: center;
     transition: background .15s;
+    color: inherit;
 }
-.opa-cart-qty-btn:hover { background: rgba(0,0,0,.06); }
-.opa-cart-qty { font-weight: 700; min-width: 20px; text-align: center; }
+.opa-cart-qty-btn:hover { background: rgba(0,0,0,.08); }
+.opa-cart-qty {
+    font-weight: 800;
+    font-size: .9rem;
+    min-width: 24px;
+    text-align: center;
+}
 
 /* Total + Actions */
 .opa-cart-total {
@@ -344,33 +415,3 @@
     font-size: .95rem;
 }
 
-.opa-cart-item-note-wrap {
-    margin-top: 6px;
-    padding: 0 2px;
-}
-.opa-cart-item-note {
-    width: 100%;
-    box-sizing: border-box;
-    background: rgba(255,255,255,0.06);
-    border: 1px solid rgba(255,255,255,0.12);
-    border-radius: 8px;
-    padding: 6px 10px;
-    font-size: .78rem;
-    color: inherit;
-    outline: none;
-    transition: border-color .2s;
-    font-family: inherit;
-}
-.opa-cart-item-note::placeholder {
-    opacity: .45;
-}
-.opa-cart-item-note:focus {
-    border-color: var(--primary, #C8A96E);
-    background: rgba(255,255,255,0.09);
-}
-.opa-cart-item-number {
-    font-weight: 700;
-    opacity: .6;
-    font-size: .85em;
-    margin-right: 2px;
-}
