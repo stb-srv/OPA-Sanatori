@@ -220,6 +220,10 @@ module.exports = function cartRoutes(requireLicense, io) {
                 return res.status(400).json({ success: false, reason: 'Bitte geben Sie eine Telefonnummer für Rückfragen an.' });
             }
 
+            if ((type === 'pickup' || type === 'delivery') && !sanitizeText(customerEmail || '')) {
+                return res.status(400).json({ success: false, reason: 'Bitte gib eine E-Mail-Adresse an (für die Bestellbestätigung).' });
+            }
+
             if (type === 'pickup') {
                 const pickupCheck = validatePickupTime(pickupTime, openStatus);
                 if (!pickupCheck.valid) {
@@ -245,6 +249,7 @@ module.exports = function cartRoutes(requireLicense, io) {
                     id:       dbItem.id,
                     name:     dbItem.name,
                     number:   dbItem.number || null,
+                    desc:     dbItem.desc  || null,
                     price:    parseFloat(dbItem.price) || 0,
                     quantity: qty,
                     note:     item.note ? String(item.note).slice(0, 200) : null,
@@ -277,7 +282,14 @@ module.exports = function cartRoutes(requireLicense, io) {
             if (io) io.emit('new_order', order);
             console.log(`🛒 Bestellung: ${orderId} | ${type} | ${validatedItems.length} Artikel | ${total.toFixed(2)}€ | Tel: ${order.phone || 'n/a'}${type === 'pickup' ? ` | Abholung: ${pickupTime}` : ''}`);
 
-            res.status(201).json({ success: true, orderId, orderToken, total: order.total, message: 'Bestellung wurde erfolgreich übermittelt.' });
+            res.status(201).json({
+                success: true,
+                orderId,
+                orderToken,
+                statusUrl: `/status?token=${orderToken}`,
+                total: order.total,
+                message: 'Bestellung wurde erfolgreich übermittelt.'
+            });
         } catch (e) {
             console.error('❌ cart/order error:', e.message);
             res.status(500).json({ success: false, reason: e.message });
