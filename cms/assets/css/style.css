@@ -749,3 +749,68 @@ input:checked + .slider:before { transform:translateX(22px); }
     user-select: none;
 }
 .menu-drag-handle:active { cursor: grabbing; }
+
+/* ============================================================
+   Küchen-Monitor – Erweiterungen
+   ============================================================ */
+
+.order-card--urgent {
+    border: 2px solid rgba(239, 68, 68, 0.6) !important;
+    animation: urgentPulse 2s ease-in-out infinite;
+}
+
+@keyframes urgentPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+    50%       { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0.2); }
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.7; }
+}
+
+.km-filter-btn {
+    padding: 6px 14px;
+    border-radius: 20px;
+    border: 1px solid rgba(0,0,0,.15);
+    background: transparent;
+    font-size: .75rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all .2s;
+    color: var(--text-muted);
+}
+.km-filter-btn.active {
+    background: var(--primary);
+    color: #fff;
+    border-color: var(--primary);
+}
+.km-filter-btn:hover:not(.active) {
+    background: rgba(0,0,0,.06);
+}
+
+.btn-danger {
+    background: #ef4444;
+    color: #fff;
+    border: 1px solid #ef4444;
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-weight: 700;
+    font-size: .8rem;
+    cursor: pointer;
+    transition: opacity .2s;
+}
+.btn-danger:hover { opacity: .85; }
+.btn-danger.small { padding: 4px 10px; font-size: .75rem; }
+
+.btn-small {
+    padding: 4px 10px;
+    border-radius: 7px;
+    border: 1px solid rgba(0,0,0,.2);
+    background: var(--bg, #fff);
+    font-size: .75rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background .2s;
+}
+.btn-small:hover { background: rgba(0,0,0,.06); }
