@@ -121,11 +121,19 @@ async function initSchema() {
                 id         VARCHAR(100) PRIMARY KEY,
                 table_id   VARCHAR(100),
                 table_name TEXT,
+                orderToken VARCHAR(100),
+                type       VARCHAR(50) DEFAULT 'dine_in',
                 status     VARCHAR(50) DEFAULT 'pending',
                 timestamp  VARCHAR(50),
                 total      DOUBLE DEFAULT 0,
                 note       LONGTEXT,
-                items      LONGTEXT DEFAULT ('[]')
+                items      LONGTEXT DEFAULT ('[]'),
+                customerName VARCHAR(255),
+                customerPhone VARCHAR(100),
+                customerEmail VARCHAR(255),
+                deliveryAddress LONGTEXT,
+                estimatedTime VARCHAR(100),
+                confirmedAt   VARCHAR(50)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         `);
 
@@ -174,7 +182,21 @@ async function initSchema() {
             if (colsCatTr.length === 0) {
                 await conn.query("ALTER TABLE categories ADD COLUMN translations LONGTEXT DEFAULT ('{}')");
             }
-        } catch(e) { console.warn('⚠️  Migration menu/categories columns fehlgeschlagen:', e.message); }
+
+            // Migration: orders columns
+            const [cols7] = await conn.query("SHOW COLUMNS FROM orders LIKE 'orderToken'");
+            if (cols7.length === 0) {
+                try { await conn.query("ALTER TABLE orders ADD COLUMN orderToken VARCHAR(100)"); } catch(e){}
+                try { await conn.query("ALTER TABLE orders ADD COLUMN type VARCHAR(50) DEFAULT 'dine_in'"); } catch(e){}
+                try { await conn.query("ALTER TABLE orders ADD COLUMN customerName VARCHAR(255)"); } catch(e){}
+                try { await conn.query("ALTER TABLE orders ADD COLUMN customerPhone VARCHAR(100)"); } catch(e){}
+                try { await conn.query("ALTER TABLE orders ADD COLUMN customerEmail VARCHAR(255)"); } catch(e){}
+                try { await conn.query("ALTER TABLE orders ADD COLUMN deliveryAddress LONGTEXT"); } catch(e){}
+                try { await conn.query("ALTER TABLE orders ADD COLUMN estimatedTime VARCHAR(100)"); } catch(e){}
+                try { await conn.query("ALTER TABLE orders ADD COLUMN confirmedAt VARCHAR(50)"); } catch(e){}
+                console.log('✅ Migration: Spalten zu Tabelle orders hinzugefügt.');
+            }
+        } catch(e) { console.warn('⚠️  Migration menu/categories/orders columns fehlgeschlagen:', e.message); }
 
         // Indizes
         const idxQueries = [
@@ -390,11 +412,23 @@ const DB = {
         return { ...rows[0], items: safeJsonParse(rows[0].items, []) };
     },
     addOrder: async (order) => {
-        await q('INSERT INTO orders (id, table_id, table_name, status, timestamp, total, note, items) VALUES (?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE status=VALUES(status)',
+        await q('INSERT INTO orders (id, table_id, table_name, orderToken, type, status, timestamp, total, note, items, customerName, customerPhone, customerEmail, deliveryAddress, estimatedTime, confirmedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE status=VALUES(status), estimatedTime=VALUES(estimatedTime), confirmedAt=VALUES(confirmedAt)',
             [order.id||Date.now().toString(), order.table_id||order.tableId||null, order.table_name||order.tableName||null,
-             order.status||'pending', order.timestamp||new Date().toISOString(), order.total||0, order.note||null, JSON.stringify(order.items||[])]);
+             order.orderToken||null, order.type||'dine_in', order.status||'pending', order.timestamp||new Date().toISOString(), order.total||0, order.note||null, JSON.stringify(order.items||[]),
+             order.customerName||null, order.customerPhone||null, order.customerEmail||null, order.deliveryAddress||null, order.estimatedTime||null, order.confirmedAt||null]);
     },
-    updateOrderStatus: async (id, status) => q('UPDATE orders SET status = ? WHERE id = ?', [status, id]),
+    updateOrderStatus: async (id, updateData) => {
+        const patch = typeof updateData === 'string' ? { status: updateData } : updateData;
+        const rows = await q('SELECT * FROM orders WHERE id = ?', [id]);
+        if (!rows[0]) return null;
+        const existing = rows[0];
+        const merged = { ...existing, ...patch };
+        if (patch.status === 'confirmed' && !merged.confirmedAt) {
+            merged.confirmedAt = new Date().toISOString();
+        }
+        await q('UPDATE orders SET status = ?, estimatedTime = ?, confirmedAt = ? WHERE id = ?', [merged.status, merged.estimatedTime || null, merged.confirmedAt || null, id]);
+        return { ...merged, items: safeJsonParse(merged.items, []) };
+    },
     deleteOrder: async (id) => q('DELETE FROM orders WHERE id = ?', [id]),
 };
 

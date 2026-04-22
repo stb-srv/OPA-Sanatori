@@ -103,11 +103,19 @@ if (dbType === 'mysql' || dbType === 'mariadb') {
             id          TEXT PRIMARY KEY,
             table_id    TEXT,
             table_name  TEXT,
+            orderToken  TEXT,
+            type        TEXT DEFAULT 'dine_in',
             status      TEXT DEFAULT 'pending',
             timestamp   TEXT,
             total       REAL DEFAULT 0,
             note        TEXT,
-            items       TEXT DEFAULT '[]'
+            items       TEXT DEFAULT '[]',
+            customerName TEXT,
+            customerPhone TEXT,
+            customerEmail TEXT,
+            deliveryAddress TEXT,
+            estimatedTime TEXT,
+            confirmedAt   TEXT
         );
     `);
 
@@ -130,6 +138,14 @@ if (dbType === 'mysql' || dbType === 'mariadb') {
         "ALTER TABLE orders ADD COLUMN total REAL DEFAULT 0",
         "ALTER TABLE orders ADD COLUMN note TEXT",
         "ALTER TABLE orders ADD COLUMN items TEXT DEFAULT '[]'",
+        "ALTER TABLE orders ADD COLUMN orderToken TEXT",
+        "ALTER TABLE orders ADD COLUMN type TEXT DEFAULT 'dine_in'",
+        "ALTER TABLE orders ADD COLUMN customerName TEXT",
+        "ALTER TABLE orders ADD COLUMN customerPhone TEXT",
+        "ALTER TABLE orders ADD COLUMN customerEmail TEXT",
+        "ALTER TABLE orders ADD COLUMN deliveryAddress TEXT",
+        "ALTER TABLE orders ADD COLUMN estimatedTime TEXT",
+        "ALTER TABLE orders ADD COLUMN confirmedAt TEXT",
         "ALTER TABLE categories ADD COLUMN sort_order INTEGER DEFAULT 0",
         "ALTER TABLE categories ADD COLUMN translations TEXT DEFAULT '{}'",
     ];
@@ -187,8 +203,8 @@ if (dbType === 'mysql' || dbType === 'mariadb') {
         deactivateMissingTables: db.prepare('UPDATE tables SET active = 0 WHERE id NOT IN (SELECT value FROM json_each(?))'),
         getOrders:          db.prepare('SELECT * FROM orders ORDER BY timestamp DESC'),
         getOrderById:       db.prepare('SELECT * FROM orders WHERE id = ?'),
-        addOrder:           db.prepare('INSERT OR REPLACE INTO orders (id, table_id, table_name, status, timestamp, total, note, items) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'),
-        updateOrderStatus:  db.prepare('UPDATE orders SET status = ? WHERE id = ?'),
+        addOrder:           db.prepare('INSERT OR REPLACE INTO orders (id, table_id, table_name, orderToken, type, status, timestamp, total, note, items, customerName, customerPhone, customerEmail, deliveryAddress, estimatedTime, confirmedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'),
+        updateOrderStatus:  db.prepare('UPDATE orders SET status = ?, estimatedTime = ?, confirmedAt = ? WHERE id = ?'),
         deleteOrder:        db.prepare('DELETE FROM orders WHERE id = ?'),
     };
 
@@ -309,9 +325,38 @@ if (dbType === 'mysql' || dbType === 'mariadb') {
             return { ...r, items: safeJsonParse(r.items, []) };
         },
         addOrder: (order) => {
-            stmts.addOrder.run(order.id||Date.now().toString(), order.table_id||order.tableId||null, order.table_name||order.tableName||null, order.status||'pending', order.timestamp||new Date().toISOString(), order.total||0, order.note||null, JSON.stringify(order.items||[]));
+            stmts.addOrder.run(
+                order.id||Date.now().toString(), 
+                order.table_id||order.tableId||null, 
+                order.table_name||order.tableName||null, 
+                order.orderToken||null,
+                order.type||'dine_in',
+                order.status||'pending', 
+                order.timestamp||new Date().toISOString(), 
+                order.total||0, 
+                order.note||null, 
+                JSON.stringify(order.items||[]),
+                order.customerName||null,
+                order.customerPhone||null,
+                order.customerEmail||null,
+                order.deliveryAddress||null,
+                order.estimatedTime||null,
+                order.confirmedAt||null
+            );
         },
-        updateOrderStatus: (id, status) => stmts.updateOrderStatus.run(status, id),
+        updateOrderStatus: (id, updateData) => {
+            const patch = typeof updateData === 'string' ? { status: updateData } : updateData;
+            const existing = stmts.getOrderById.get(id);
+            if (!existing) return null;
+
+            const merged = { ...existing, ...patch };
+            if (patch.status === 'confirmed' && !merged.confirmedAt) {
+                merged.confirmedAt = new Date().toISOString();
+            }
+
+            stmts.updateOrderStatus.run(merged.status, merged.estimatedTime || null, merged.confirmedAt || null, id);
+            return { ...merged, items: safeJsonParse(merged.items, []) };
+        },
         deleteOrder: (id) => stmts.deleteOrder.run(id),
     };
 
