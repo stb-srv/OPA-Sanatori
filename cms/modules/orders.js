@@ -195,12 +195,16 @@ function renderCard(o) {
                         color:var(--text-muted); margin-bottom:8px;">Bestellung</div>
             ${o.items.map(i => `
                 <div class="order-item">
-                    <span class="count">${i.quantity}×</span>
-                    <span class="name">${escHtml(i.name)}</span>
-                    ${i.variant  ? `<span style="font-size:.72rem; color:var(--text-muted); margin-left:4px;">(${escHtml(i.variant)})</span>` : ''}
-                    ${i.extras && Array.isArray(i.extras) && i.extras.length > 0 
-                        ? `<br><small style="color:#6b7280; margin-left:16px;"><i class="fas fa-plus-circle" style="margin-right:3px; opacity:.6;"></i>${i.extras.map(escHtml).join(', ')}</small>` : ''}
-                    ${i.note ? `<div style="margin-top:3px; margin-left:16px; font-size:.75rem; font-weight:700; color:var(--primary);">📝 ${escHtml(i.note)}</div>` : ''}
+                    <div style="display:flex; align-items:baseline; gap:6px; flex-wrap:wrap;">
+                        ${i.number ? `<span style="font-size:.7rem; font-weight:800; color:var(--primary); opacity:.8; min-width:20px;">${escHtml(String(i.number))}.</span>` : ''}
+                        <span class="count">${i.quantity}×</span>
+                        <span class="name" style="font-weight:700;">${escHtml(i.name)}</span>
+                    </div>
+                    ${i.desc ? `<div style="font-size:.72rem; color:var(--text-muted); margin-left:${i.number ? '26px' : '16px'}; margin-top:2px; line-height:1.4;">${escHtml(i.desc)}</div>` : ''}
+                    ${i.variant  ? `<span style="font-size:.72rem; color:var(--text-muted); margin-left:${i.number ? '26px':'16px'};">(${escHtml(i.variant)})</span>` : ''}
+                    ${i.extras && Array.isArray(i.extras) && i.extras.length > 0
+                        ? `<div style="margin-left:${i.number ? '26px':'16px'}; font-size:.72rem; color:#6b7280;"><i class="fas fa-plus-circle" style="margin-right:3px; opacity:.6;"></i>${i.extras.map(escHtml).join(', ')}</div>` : ''}
+                    ${i.note ? `<div style="margin-top:3px; margin-left:${i.number ? '26px':'16px'}; font-size:.75rem; font-weight:700; color:var(--primary);">📝 ${escHtml(i.note)}</div>` : ''}
                 </div>
             `).join('')}
 
