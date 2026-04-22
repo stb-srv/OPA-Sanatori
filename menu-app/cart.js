@@ -158,29 +158,46 @@
         });
 
         body.innerHTML = cartItems.map(item => {
-            const numPrefix = item.number ? `<span class="opa-cart-item-number">${escHtml(String(item.number))}.</span> ` : '';
             const savedNote = noteValues[String(item.id)] !== undefined ? noteValues[String(item.id)] : (item.note || '');
             const unitPrice = parseFloat(item.price);
             return `
             <div class="opa-cart-item" data-id="${escHtml(String(item.id))}">
-                <div class="opa-cart-item-info">
-                    <span class="opa-cart-item-name">${numPrefix}${escHtml(item.name)}</span>
-                    <span class="opa-cart-item-price">${fmt(unitPrice)} <small style="opacity:.5; font-size:.75rem;">/ Stk.</small></span>
+
+                <!-- Zeile 1: Nr. + Name -->
+                <div class="opa-cart-item-row1">
+                    <div class="opa-cart-item-name-wrap">
+                        ${item.number ? `<span class="opa-cart-item-number">${escHtml(String(item.number))}.</span>` : ''}
+                        <span class="opa-cart-item-name">${escHtml(item.name)}</span>
+                    </div>
                 </div>
+
+                <!-- Zeile 2: Beschreibung -->
+                ${item.desc ? `<div class="opa-cart-item-desc">${escHtml(item.desc)}</div>` : ''}
+
+                <!-- Zeile 3: Notiz -->
                 <div class="opa-cart-item-note-wrap">
                     <input
                         class="opa-cart-item-note"
                         type="text"
                         data-id="${escHtml(String(item.id))}"
-                        placeholder="📝 Extrawunsch (z.B. ohne Zwiebeln)"
+                        placeholder="\uD83D\uDCDD Extrawunsch (z.B. ohne Zwiebeln)"
                         maxlength="120"
                         value="${escHtml(savedNote)}">
                 </div>
-                <div class="opa-cart-item-controls">
-                    <button class="opa-cart-qty-btn" data-action="remove" data-id="${escHtml(String(item.id))}" aria-label="Weniger">&#8722;</button>
-                    <span class="opa-cart-qty">${item.quantity}</span>
-                    <button class="opa-cart-qty-btn" data-action="add" data-id="${escHtml(String(item.id))}" aria-label="Mehr">&#43;</button>
+
+                <!-- Zeile 4: Preis + Stepper -->
+                <div class="opa-cart-item-row4">
+                    <span class="opa-cart-item-price">
+                        ${fmt(unitPrice * item.quantity)}
+                        ${item.quantity > 1 ? `<small>${fmt(unitPrice)} / Stk.</small>` : ''}
+                    </span>
+                    <div class="opa-cart-item-controls">
+                        <button class="opa-cart-qty-btn" data-action="remove" data-id="${escHtml(String(item.id))}" aria-label="Weniger">&#8722;</button>
+                        <span class="opa-cart-qty">${item.quantity}</span>
+                        <button class="opa-cart-qty-btn" data-action="add" data-id="${escHtml(String(item.id))}" aria-label="Mehr">&#43;</button>
+                    </div>
                 </div>
+
             </div>`;
         }).join('');
 
@@ -190,7 +207,7 @@
                 const action = btn.dataset.action;
                 const item   = cartItems.find(i => String(i.id) === id);
                 if (!item) return;
-                if (action === 'add')    addItem({ id: item.id, name: item.name, price: item.price, number: item.number });
+                if (action === 'add')    addItem({ id: item.id, name: item.name, price: item.price, number: item.number, desc: item.desc });
                 if (action === 'remove') removeItem(id);
             });
         });
@@ -463,13 +480,14 @@
             const name   = card.dataset.itemName || card.querySelector('[data-item-name]')?.textContent || 'Artikel';
             const price  = card.dataset.itemPrice || '0';
             const number = card.dataset.itemNumber || '';
+            const desc   = card.dataset.itemDesc   || '';
 
             if (showBtn && !card.querySelector('.opa-add-to-cart')) {
                 const btn = document.createElement('button');
                 btn.className = 'opa-add-to-cart';
                 btn.setAttribute('aria-label', `${name} in den Warenkorb`);
                 btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
-                btn.addEventListener('click', (e) => { e.stopPropagation(); addItem({ id, name, price, number }); });
+                btn.addEventListener('click', (e) => { e.stopPropagation(); addItem({ id, name, price, number, desc }); });
                 card.appendChild(btn);
             }
 
@@ -478,7 +496,7 @@
                 card.style.cursor = 'pointer';
                 card.addEventListener('click', (e) => {
                     if (e.target.closest('.opa-add-to-cart')) return;
-                    addItem({ id, name, price, number });
+                    addItem({ id, name, price, number, desc });
                     card.classList.add('opa-tile-added');
                     setTimeout(() => card.classList.remove('opa-tile-added'), 600);
                 });

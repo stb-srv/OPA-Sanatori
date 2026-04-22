@@ -611,6 +611,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                  data-item-name="${item.name.replace(/"/g, '&quot;')}"
                  data-item-price="${price}"
                  data-item-number="${item.number || ''}"
+                 data-item-desc="${(itemDesc || '').replace(/"/g, '&quot;')}"
                  ${tileClickable ? 'data-cart-tile="1"' : ''}>
                 <div class="dish-card-img">
                     ${(item.is_daily_special && window.OPA_DAILY_SPECIALS_ENABLED) ? `<span class="daily-special-badge" data-i18n="menu.today_badge">⭐ ${window.OpaI18n ? OpaI18n.t('menu.today_badge') : 'Heute'}</span>` : ''}
