@@ -34,6 +34,8 @@ const LICENSE_SERVER = (CONFIG.LICENSE_SERVER_URL || 'https://licens-prod.stb-sr
 const UPLOADS_DIR  = path.join(__dirname, 'uploads');
 const PLUGINS_DIR  = path.join(__dirname, 'plugins');
 
+const requireAuth = makeRequireAuth(ADMIN_SECRET);
+
 // Ensure required directories exist
 [path.join(__dirname, 'server'), UPLOADS_DIR, PLUGINS_DIR].forEach(d => { if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true }); });
 
@@ -112,13 +114,7 @@ app.use((req, res, next) => {
     res.redirect('/setup');
 });
 
-// requireAuth
-const requireAuth = (req, res, next) => {
-    const token = req.headers['x-admin-token'];
-    if (!token) return res.status(401).json({ success: false, reason: 'No token' });
-    try { req.admin = jwt.verify(token, ADMIN_SECRET); next(); }
-    catch (e) { res.status(401).json({ success: false, reason: 'Invalid session' }); }
-};
+
 
 // --- Mount Routes ---
 app.get('/api/health', (req, res) => res.json({ status: 'ok', version: APP_VERSION, uptime: Math.floor(process.uptime()), timestamp: new Date().toISOString() }));
