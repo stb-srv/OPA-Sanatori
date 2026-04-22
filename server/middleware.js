@@ -92,7 +92,7 @@ const requireMenuLimit = async (req, res, next) => {
         next();
     } catch (e) {
         console.error('requireMenuLimit error:', e.message);
-        next(); // im Zweifel durchlassen
+        res.status(500).json({ success: false, reason: 'Lizenzprüfung fehlgeschlagen.' });
     }
 };
 
