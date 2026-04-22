@@ -368,82 +368,169 @@ async function sendMail({ to, subject, html }, smtp) {
  * Sendet dem Kunden eine E-Mail wenn eine Bestellung bestätigt oder abgelehnt wird.
  */
 async function sendOrderStatusMail(order, DB) {
-    const settings = await DB.getKV('settings', {});
-    const branding = await DB.getKV('branding', {});
+    const settings      = await DB.getKV('settings', {});
+    const branding      = await DB.getKV('branding', {});
     const restaurantName = branding.name || 'Unser Restaurant';
+    const primaryColor  = branding.primaryColor || '#1B3A5C';
+    const accentColor   = branding.accentColor  || '#C8A96E';
     const smtp = settings.smtp || {};
     if (!smtp.host || !order.customerEmail) return;
 
     const isConfirmed = order.status === 'confirmed';
+    const isCancelled = order.status === 'cancelled';
+    const isReady     = order.status === 'ready';
     const typeLabel   = order.type === 'pickup' ? 'Abholung' : 'Lieferung';
 
-    const subject = isConfirmed
-        ? `✅ Deine ${typeLabel} wurde bestätigt – ${restaurantName}`
-        : `❌ Deine Bestellung wurde abgelehnt – ${restaurantName}`;
-
-    const itemsHtml = (order.items || []).map(i =>
-        `<tr>
-            <td style="padding:6px 8px; color:#6b7280;">${i.number ? i.number + '.' : ''}</td>
-            <td style="padding:6px 8px;"><strong>${i.quantity}×</strong> ${i.name}
-                ${i.desc ? `<br><small style="color:#9ca3af;">${i.desc}</small>` : ''}
-                ${i.note ? `<br><small style="color:#C8A96E;">📝 ${i.note}</small>` : ''}
+    // Artikel-Tabelle
+    const itemsRows = (order.items || []).map(i => `
+        <tr>
+            <td style="padding:8px 12px; color:#9ca3af; font-size:.8rem; width:24px;">${i.number || ''}</td>
+            <td style="padding:8px 12px;">
+                <strong style="font-size:.9rem;">${i.quantity}× ${i.name}</strong>
+                ${i.desc ? `<br><span style="font-size:.78rem; color:#9ca3af;">${i.desc}</span>` : ''}
+                ${i.note ? `<br><span style="font-size:.78rem; color:${accentColor};">📝 ${i.note}</span>` : ''}
             </td>
-            <td style="padding:6px 8px; text-align:right; white-space:nowrap;">
-                ${(parseFloat(i.price) * i.quantity).toFixed(2).replace('.',',')} €
+            <td style="padding:8px 12px; text-align:right; font-weight:700; white-space:nowrap; font-size:.88rem;">
+                ${(parseFloat(i.price||0) * (i.quantity||1)).toFixed(2).replace('.',',')} €
             </td>
-        </tr>`
-    ).join('');
+        </tr>`).join('');
 
-    const statusUrl = order.orderToken
-        ? `https://${process.env.PUBLIC_HOST || 'deine-domain.de'}/status?token=${order.orderToken}`
+    const publicHost = process.env.PUBLIC_HOST || process.env.HOST || 'localhost:5000';
+    const protocol   = publicHost.includes('localhost') ? 'http' : 'https';
+    const statusUrl  = order.orderToken
+        ? `${protocol}://${publicHost}/status?token=${order.orderToken}`
         : null;
 
-    const body = isConfirmed ? `
-        <h2 style="color:#22c55e; margin-bottom:4px;">Bestellung bestätigt! 🎉</h2>
-        <p>Hallo <strong>${order.customerName || 'Gast'}</strong>,</p>
-        <p>deine <strong>${typeLabel}</strong> wurde bestätigt und wird jetzt vorbereitet.</p>
-        ${order.estimatedTime ? `
-        <div style="background:#fef9c3; border:2px solid #fbbf24; border-radius:10px; padding:14px 18px; margin:16px 0;">
-            ⏰ <strong>Voraussichtliche Zeit: ${order.estimatedTime}</strong>
-        </div>` : ''}
-        <table style="width:100%; border-collapse:collapse; margin:16px 0; font-size:0.9em;">
-            <thead>
-                <tr style="background:#f3f4f6;">
-                    <th style="padding:6px 8px; text-align:left; width:30px;">#</th>
-                    <th style="padding:6px 8px; text-align:left;">Gericht</th>
-                    <th style="padding:6px 8px; text-align:right;">Preis</th>
-                </tr>
-            </thead>
-            <tbody>${itemsHtml}</tbody>
-            <tfoot>
-                <tr style="border-top:2px solid #e5e7eb;">
-                    <td colspan="2" style="padding:8px; font-weight:800;">Gesamt</td>
-                    <td style="padding:8px; text-align:right; font-weight:800; color:#C8A96E;">
-                        ${parseFloat(order.total||0).toFixed(2).replace('.',',')} €
-                    </td>
-                </tr>
-            </tfoot>
-        </table>
-        ${statusUrl ? `
-        <div style="text-align:center; margin:24px 0;">
-            <a href="${statusUrl}" style="background:#1b3a5c; color:#fff; padding:12px 28px;
-               border-radius:10px; text-decoration:none; font-weight:700; font-size:0.95em;">
-               📦 Bestellstatus verfolgen
-            </a>
-            <p style="font-size:0.75em; color:#9ca3af; margin-top:8px;">
-                Oder öffne diesen Link: <a href="${statusUrl}">${statusUrl}</a>
-            </p>
-        </div>` : ''}
-        <p style="font-size:0.8em; color:#6b7280;">Bestell-Ref.: #${order.id}</p>
-    ` : `
-        <h2 style="color:#ef4444;">Bestellung abgelehnt ❌</h2>
-        <p>Hallo <strong>${order.customerName || 'Gast'}</strong>,</p>
-        <p>leider konnten wir deine Bestellung diesmal nicht annehmen.</p>
-        <p>Bitte ruf uns an oder versuche es zu einem anderen Zeitpunkt erneut.</p>
-        <p style="font-size:0.8em; color:#6b7280;">Bestell-Ref.: #${order.id}</p>
-    `;
+    // Templates aus DB laden (editierbar im CMS)
+    const tplKey = isConfirmed ? 'tpl_order_confirmed'
+                 : isCancelled ? 'tpl_order_cancelled'
+                 : isReady     ? 'tpl_order_ready'
+                 : null;
+    const tpl = tplKey ? (settings.emailTemplates || {})[tplKey] || {} : {};
 
-    await sendMail({ to: order.customerEmail, subject, html: wrapHtml(restaurantName, body) }, smtp);
+    let subject, headerColor, headerIcon, headerTitle, bodyContent;
+
+    if (isConfirmed) {
+        subject     = tpl.subject || `✅ ${typeLabel} bestätigt – ${restaurantName}`;
+        headerColor = '#22c55e';
+        headerIcon  = '🎉';
+        headerTitle = `Deine ${typeLabel} ist bestätigt!`;
+        bodyContent = tpl.body || `
+            <p style="font-size:1rem; color:#374151;">
+                Hallo <strong>${order.customerName || 'Gast'}</strong>,<br><br>
+                super – wir haben deine Bestellung angenommen und bereiten sie jetzt vor!
+            </p>
+            ${order.estimatedTime ? `
+            <div style="background:#fef9c3; border-left:4px solid #fbbf24; border-radius:8px; padding:14px 18px; margin:20px 0;">
+                <p style="margin:0; font-size:.85rem; color:#92400e; font-weight:700;">⏰ Voraussichtliche ${typeLabel}szeit</p>
+                <p style="margin:4px 0 0; font-size:1.3rem; font-weight:800; color:#78350f;">${order.estimatedTime}</p>
+            </div>` : ''}`;
+    } else if (isCancelled) {
+        subject     = tpl.subject || `❌ Bestellung abgelehnt – ${restaurantName}`;
+        headerColor = '#ef4444';
+        headerIcon  = '😔';
+        headerTitle = 'Bestellung leider abgelehnt';
+        bodyContent = tpl.body || `
+            <p style="font-size:1rem; color:#374151;">
+                Hallo <strong>${order.customerName || 'Gast'}</strong>,<br><br>
+                leider konnten wir deine Bestellung diesmal nicht annehmen.
+                Bitte ruf uns an oder versuche es zu einem anderen Zeitpunkt erneut.
+            </p>`;
+    } else if (isReady) {
+        subject     = tpl.subject || `🎉 Deine Bestellung ist abholbereit – ${restaurantName}`;
+        headerColor = '#22c55e';
+        headerIcon  = '✅';
+        headerTitle = 'Deine Bestellung ist fertig!';
+        bodyContent = tpl.body || `
+            <p style="font-size:1rem; color:#374151;">
+                Hallo <strong>${order.customerName || 'Gast'}</strong>,<br><br>
+                deine Bestellung ist jetzt abholbereit. Wir freuen uns auf dich!
+            </p>`;
+    } else { return; }
+
+    const html = `<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0; padding:0; background:#f3f4f6; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6; padding:40px 16px;">
+<tr><td align="center">
+<table width="100%" style="max-width:560px; background:#ffffff; border-radius:16px; overflow:hidden; box-shadow:0 4px 24px rgba(0,0,0,.08);">
+
+  <!-- Header -->
+  <tr>
+    <td style="background:${primaryColor}; padding:32px 40px; text-align:center;">
+      <p style="margin:0; font-size:2.5rem;">${headerIcon}</p>
+      <h1 style="margin:8px 0 0; color:#ffffff; font-size:1.3rem; font-weight:800;">${headerTitle}</h1>
+      <p style="margin:6px 0 0; color:rgba(255,255,255,.7); font-size:.82rem;">
+          ${restaurantName}
+      </p>
+    </td>
+  </tr>
+
+  <!-- Body -->
+  <tr>
+    <td style="padding:32px 40px;">
+      ${bodyContent}
+
+      <!-- Artikel-Tabelle -->
+      ${itemsRows ? `
+      <p style="font-size:.7rem; font-weight:800; text-transform:uppercase; letter-spacing:1px; color:#9ca3af; margin:24px 0 8px;">Deine Bestellung</p>
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; border-radius:10px; overflow:hidden; border:1px solid #e5e7eb;">
+          <tbody>${itemsRows}</tbody>
+          <tfoot>
+              <tr style="background:#f9fafb; border-top:2px solid #e5e7eb;">
+                  <td colspan="2" style="padding:10px 12px; font-weight:800; font-size:.9rem;">Gesamt</td>
+                  <td style="padding:10px 12px; text-align:right; font-weight:800; color:${accentColor}; font-size:1rem;">
+                      ${parseFloat(order.total||0).toFixed(2).replace('.',',')} €
+                  </td>
+              </tr>
+          </tfoot>
+      </table>` : ''}
+
+      <!-- Infos -->
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0; border:1px solid #e5e7eb; border-radius:10px; overflow:hidden;">
+          ${order.pickupTime ? `<tr style="border-bottom:1px solid #e5e7eb;">
+              <td style="padding:10px 14px; font-size:.82rem; color:#6b7280; font-weight:600; background:#f9fafb;">Gewünschte Zeit</td>
+              <td style="padding:10px 14px; font-size:.88rem; font-weight:700;">${order.pickupTime}</td>
+          </tr>` : ''}
+          <tr>
+              <td style="padding:10px 14px; font-size:.82rem; color:#6b7280; font-weight:600; background:#f9fafb;">Bestell-Ref.</td>
+              <td style="padding:10px 14px; font-size:.78rem; font-weight:700; color:#9ca3af;">#${String(order.id).slice(0,12).toUpperCase()}</td>
+          </tr>
+      </table>
+
+      <!-- Status-Button -->
+      ${statusUrl ? `
+      <div style="text-align:center; margin:28px 0 8px;">
+          <a href="${statusUrl}" style="display:inline-block; background:${primaryColor}; color:#ffffff;
+             padding:14px 32px; border-radius:12px; text-decoration:none;
+             font-weight:800; font-size:.95rem; letter-spacing:.3px;">
+              📦 Bestellstatus live verfolgen
+          </a>
+          <p style="margin:10px 0 0; font-size:.72rem; color:#9ca3af;">
+              Falls der Button nicht funktioniert:<br>
+              <a href="${statusUrl}" style="color:${accentColor};">${statusUrl}</a>
+          </p>
+      </div>` : ''}
+    </td>
+  </tr>
+
+  <!-- Footer -->
+  <tr>
+    <td style="background:#f9fafb; padding:20px 40px; text-align:center; border-top:1px solid #e5e7eb;">
+        <p style="margin:0; font-size:.78rem; color:#9ca3af;">
+            Mit freundlichen Grüßen · <strong>${restaurantName}</strong>
+        </p>
+    </td>
+  </tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>`;
+
+    await sendMail({ to: order.customerEmail, subject, html }, smtp);
 }
 
 Mailer.sendOrderStatusMail = sendOrderStatusMail;
