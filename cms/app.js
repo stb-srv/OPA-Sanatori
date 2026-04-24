@@ -476,16 +476,12 @@ if (pwdChangeForm) {
 
 if (logoutBtn) logoutBtn.onclick = () => logout();
 
-// ── Accordion: nur eine Gruppe gleichzeitig offen ──
+// ── Sidebar-Gruppen: mehrere gleichzeitig offen, manuell schließbar ──
 document.querySelectorAll('.nav-group-header').forEach(header => {
     header.addEventListener('click', (e) => {
         e.preventDefault();
         const group = header.closest('.nav-group');
-        const isOpen = group.classList.contains('open');
-        // Alle schließen
-        document.querySelectorAll('.nav-group').forEach(g => g.classList.remove('open'));
-        // Diese öffnen wenn sie vorher zu war
-        if (!isOpen) group.classList.add('open');
+        group.classList.toggle('open');
         const view = header.dataset.view;
         const tab  = header.dataset.tab || null;
         if (view) switchView(view, tab);
