@@ -166,12 +166,23 @@ export function showTrialBanner(daysLeft) {
                        font-size:.82rem; font-weight:700;">
             Jetzt upgraden →
         </button>
-        <button onclick="document.getElementById('trial-banner').remove()"
+        <button class="trial-banner-close"
                 style="background:none; border:none; color:rgba(255,255,255,.7);
                        cursor:pointer; font-size:1rem; padding:0 4px;">✕</button>
     `;
 
     document.body.prepend(banner);
+
+    // Fix #8: Banner-Close setzt marginTop zurück
+    const closeBtn = banner.querySelector('.trial-banner-close');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+            banner.remove();
+            const header = document.querySelector('.cms-header, #cms-header');
+            if (header) header.style.marginTop = '';
+        });
+    }
+
     // Damit der Banner nicht über den Header-Inhalt fällt
     const header = document.querySelector('.cms-header, #cms-header');
     if (header) header.style.marginTop = banner.offsetHeight + 'px';

@@ -1,3 +1,4 @@
+window.OPA_LICENSE_SERVER = 'https://license.opa-santorini.de';
 /**
  * Grieche-CMS Module Configuration
  * This file controls which features are active in the system.

@@ -79,18 +79,21 @@ function applyUserFromToken() {
 }
 
 async function init() {
+    // Fix #6: License-Key prüfen BEVOR Auth gecheckt wird
+    const savedKey = localStorage.getItem('opa_license_key');
+    if (!savedKey) {
+        loginContainer.style.display = 'none';
+        adminDashboard.style.display = 'none';
+        const pwdContainer = document.getElementById('password-change-container');
+        if (pwdContainer) pwdContainer.style.display = 'none';
+        await initTrialOnboarding(document.body, (key) => {
+            localStorage.setItem('opa_license_key', key);
+            window.location.reload();
+        });
+        return;
+    }
+
     if (!checkAuth()) {
-        // Prüfen ob Lizenz-Key gesetzt ist — wenn nicht → Trial-Onboarding
-        const savedKey = localStorage.getItem('opa_license_key');
-        if (!savedKey) {
-            loginContainer.style.display = 'none';
-            adminDashboard.style.display = 'none';
-            await initTrialOnboarding(document.body, (key) => {
-                localStorage.setItem('opa_license_key', key);
-                window.location.reload();
-            });
-            return;
-        }
         loginContainer.style.display = 'flex';
         adminDashboard.style.display = 'none';
         const pwdContainer = document.getElementById('password-change-container');
@@ -148,12 +151,11 @@ async function init() {
     const settings = await apiGet('settings') || {};
     updateSidebarVisibility(settings);
 
-    // Trial-Ablauf-Banner prüfen
+    // Fix #7: Kein doppelter dynamischer Import – showTrialBanner direkt nutzen
     try {
         const licInfo = await apiGet('license/info');
         if (licInfo && licInfo.type === 'TRIAL' && licInfo.expires_at) {
             const daysLeft = Math.ceil((new Date(licInfo.expires_at) - Date.now()) / 86400000);
-            const { showTrialBanner } = await import('./modules/trial.js');
             showTrialBanner(daysLeft);
         }
     } catch(e) {}
