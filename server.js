@@ -139,6 +139,7 @@ app.get('/api/health', (req, res) => res.json({ status: 'ok', version: APP_VERSI
 app.get('/api/version', (req, res) => res.json({ version: APP_VERSION }));
 
 app.use('/api/admin',        require('./server/routes/auth.js')(ADMIN_SECRET));
+app.use('/api/v1/setup',     require('./server/routes/setup.js'));
 app.use('/api/users',        require('./server/routes/users.js')(requireAuth));
 app.use('/api',              require('./server/routes/menu.js')(requireAuth, requireLicense));
 app.use('/api/orders',       require('./server/routes/orders.js')(requireAuth, io));
