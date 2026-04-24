@@ -318,6 +318,27 @@
         document.getElementById('opa-checkout-submit').addEventListener('click', () => submitOrder(selectedMode));
     }
 
+    function generateTimeSlots(cfg) {
+      const step  = cfg.timeSlotStep || 15;
+      const lead  = cfg.timeSlotLead || 20;
+      const [oh, om] = (cfg.openTime  || '11:00').split(':').map(Number);
+      const [ch, cm] = (cfg.closeTime || '22:00').split(':').map(Number);
+      const now = new Date();
+      const earliest = new Date(now.getTime() + lead * 60000);
+      let cursor = new Date(now); cursor.setHours(oh, om, 0, 0);
+      if (cursor < earliest) {
+        cursor = new Date(Math.ceil(earliest.getTime() / (step*60000)) * (step*60000));
+      }
+      const end = new Date(now); end.setHours(ch, cm, 0, 0);
+      const pad = n => String(n).padStart(2, '0');
+      const slots = [];
+      while (cursor <= end) {
+        slots.push(pad(cursor.getHours()) + ':' + pad(cursor.getMinutes()));
+        cursor = new Date(cursor.getTime() + step * 60000);
+      }
+      return slots;
+    }
+
     function renderCheckoutForm(mode) {
         const form = document.getElementById('opa-checkout-form');
         if (!form) return;
@@ -334,40 +355,83 @@
                 <label class="opa-form-label">Anmerkung (optional)
                     <textarea class="opa-form-input" id="co-note" rows="2" placeholder="Sonderwunsch, Allergie\u2026" autocomplete="off"></textarea>
                 </label>`;
-        } else if (mode === 'pickup') {
-            form.innerHTML = `
-                <label class="opa-form-label">Name *
-                    <input class="opa-form-input" type="text" id="co-name" placeholder="Dein Name" autocomplete="name" required>
-                </label>
-                <label class="opa-form-label">Telefonnummer * <small style="font-weight:normal;color:#888">(f\u00fcr R\u00fcckfragen)</small>
-                    <input class="opa-form-input" type="tel" id="co-phone" placeholder="+49 \u2026" autocomplete="tel" required>
-                </label>
-                <label class="opa-form-label">E-Mail-Adresse * <small style="font-weight:normal;color:#888">(f\u00fcr Bestellbest\u00e4tigung & Status-Link)</small>
-                    <input class="opa-form-input" type="email" id="co-email" placeholder="deine@email.de" autocomplete="email" required>
-                </label>
-                <label class="opa-form-label">Gew\u00fcnschte Abholzeit *
+        } else if (mode === 'pickup' || mode === 'delivery') {
+            const isPickup = mode === 'pickup';
+            const timeLabel = isPickup ? 'Gewünschte Abholzeit *' : 'Gewünschte Lieferzeit *';
+
+            let timeInputHtml = `
+                <label class="opa-form-label">${timeLabel}
                     <input class="opa-form-input" type="time" id="co-time" min="${escHtml(minTime)}" autocomplete="off" required>
-                </label>
-                <label class="opa-form-label">Anmerkung (optional)
-                    <textarea class="opa-form-input" id="co-note" rows="2" placeholder="Sonderwunsch, Allergie\u2026" autocomplete="off"></textarea>
                 </label>`;
-        } else if (mode === 'delivery') {
+
+            if (cartConfig.timeSlotMode !== 'free') {
+                const slots = generateTimeSlots(cartConfig);
+                const sofortEnabled = cartConfig.sofortEnabled !== false;
+                const sofortLabel = (cartConfig.sofortLabel || 'Sofort (ca. {min} Min.)')
+                    .replace('{min}', cartConfig.timeSlotLead || 20);
+
+                timeInputHtml = `
+                    <div class="opa-time-section">
+                        <label class="opa-form-label">${timeLabel}</label>
+                        <div class="opa-time-toggle">
+                            ${sofortEnabled ? `<button type="button" class="opa-toggle-btn active" data-tmode="sofort">⚡ Sofort</button>` : ''}
+                            <button type="button" class="opa-toggle-btn ${!sofortEnabled ? 'active' : ''}" data-tmode="wished">🕐 Gewünschte Zeit</button>
+                        </div>
+                        <div class="opa-sofort-box ${!sofortEnabled ? 'hidden' : ''}">
+                            ⚡ <strong>Sofort bestellen</strong><br>
+                            <small>${sofortLabel}</small>
+                        </div>
+                        <div class="opa-slots-wrap ${sofortEnabled ? 'hidden' : ''}">
+                            ${slots.length > 0
+                                ? slots.map(t => `<button type="button" class="opa-slot-btn" data-time="${t}">${t}</button>`).join('')
+                                : '<p class="opa-no-slots">Heute keine Zeitfenster mehr verfügbar.</p>'
+                            }
+                        </div>
+                    </div>
+                    <input type="hidden" id="co-time" value="${sofortEnabled ? 'sofort' : ''}">`;
+            }
+
             form.innerHTML = `
                 <label class="opa-form-label">Name *
                     <input class="opa-form-input" type="text" id="co-name" placeholder="Dein Name" autocomplete="name" required>
                 </label>
+                ${!isPickup ? `
                 <label class="opa-form-label">Lieferadresse *
-                    <input class="opa-form-input" type="text" id="co-address" placeholder="Stra\u00dfe, Hausnummer, PLZ" autocomplete="street-address" required>
-                </label>
+                    <input class="opa-form-input" type="text" id="co-address" placeholder="Straße, Hausnummer, PLZ" autocomplete="street-address" required>
+                </label>` : ''}
                 <label class="opa-form-label">Telefonnummer * <small style="font-weight:normal;color:#888">(f\u00fcr R\u00fcckfragen)</small>
                     <input class="opa-form-input" type="tel" id="co-phone" placeholder="+49 \u2026" autocomplete="tel" required>
                 </label>
                 <label class="opa-form-label">E-Mail-Adresse * <small style="font-weight:normal;color:#888">(f\u00fcr Bestellbest\u00e4tigung & Status-Link)</small>
                     <input class="opa-form-input" type="email" id="co-email" placeholder="deine@email.de" autocomplete="email" required>
                 </label>
+                ${timeInputHtml}
                 <label class="opa-form-label">Anmerkung (optional)
-                    <textarea class="opa-form-input" id="co-note" rows="2" placeholder="Klingelname, Etage\u2026" autocomplete="off"></textarea>
+                    <textarea class="opa-form-input" id="co-note" rows="2" placeholder="${isPickup ? 'Sonderwunsch, Allergie\u2026' : 'Klingelname, Etage\u2026'}" autocomplete="off"></textarea>
                 </label>`;
+
+            if (cartConfig.timeSlotMode !== 'free') {
+                // Toggle Sofort / Gewünscht
+                form.querySelectorAll('.opa-toggle-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        form.querySelectorAll('.opa-toggle-btn').forEach(b => b.classList.remove('active'));
+                        btn.classList.add('active');
+                        const tmode = btn.dataset.tmode;
+                        form.querySelector('.opa-sofort-box')?.classList.toggle('hidden', tmode !== 'sofort');
+                        form.querySelector('.opa-slots-wrap')?.classList.toggle('hidden', tmode !== 'wished');
+                        if (tmode === 'sofort') document.getElementById('co-time').value = 'sofort';
+                        else document.getElementById('co-time').value = '';
+                    });
+                });
+                // Slot-Auswahl
+                form.querySelectorAll('.opa-slot-btn').forEach(slot => {
+                    slot.addEventListener('click', () => {
+                        form.querySelectorAll('.opa-slot-btn').forEach(s => s.classList.remove('selected'));
+                        slot.classList.add('selected');
+                        document.getElementById('co-time').value = slot.dataset.time;
+                    });
+                });
+            }
         }
     }
 
@@ -398,40 +462,34 @@
             payload.tableNumber = table;
             payload.phone       = phone;
             payload.guestNote   = document.getElementById('co-note')?.value.trim() || null;
-        } else if (mode === 'pickup') {
+        } else if (mode === 'pickup' || mode === 'delivery') {
             const name  = document.getElementById('co-name')?.value.trim();
             const phone = document.getElementById('co-phone')?.value.trim();
             const email = document.getElementById('co-email')?.value.trim();
             const time  = document.getElementById('co-time')?.value;
             const note  = document.getElementById('co-note')?.value.trim() || null;
+            const address = (mode === 'delivery') ? document.getElementById('co-address')?.value.trim() : null;
+
             if (!name)  { showMsg(msg, 'error', 'Bitte Name angeben.'); return; }
+            if (mode === 'delivery' && !address) { showMsg(msg, 'error', 'Bitte Lieferadresse angeben.'); return; }
             if (!phone) { showMsg(msg, 'error', 'Bitte Telefonnummer angeben.'); return; }
             if (!email) { showMsg(msg, 'error', 'Bitte E-Mail-Adresse angeben.'); return; }
-            if (!time)  { showMsg(msg, 'error', 'Bitte Abholzeit angeben.'); return; }
-            if (cartConfig.minPickupTime && time < cartConfig.minPickupTime) {
-                showMsg(msg, 'error', `Früheste mögliche Zeit: ${cartConfig.minPickupTime} Uhr.`);
-                return;
+            if (!time)  { showMsg(msg, 'error', 'Bitte Abholzeit auswählen.'); return; }
+
+            // Validierung nur bei freier Eingabe
+            if (cartConfig.timeSlotMode === 'free' && time !== 'sofort') {
+                if (cartConfig.minPickupTime && time < cartConfig.minPickupTime) {
+                    showMsg(msg, 'error', `Früheste mögliche Zeit: ${cartConfig.minPickupTime} Uhr.`);
+                    return;
+                }
             }
+
             payload.customerName  = name;
             payload.customerPhone = phone;
             payload.customerEmail = email;
             payload.pickupTime    = time;
             payload.guestNote     = note;
-        } else if (mode === 'delivery') {
-            const name    = document.getElementById('co-name')?.value.trim();
-            const address = document.getElementById('co-address')?.value.trim();
-            const phone   = document.getElementById('co-phone')?.value.trim();
-            const email   = document.getElementById('co-email')?.value.trim();
-            const note    = document.getElementById('co-note')?.value.trim() || null;
-            if (!name)    { showMsg(msg, 'error', 'Bitte Name angeben.'); return; }
-            if (!address) { showMsg(msg, 'error', 'Bitte Lieferadresse angeben.'); return; }
-            if (!phone)   { showMsg(msg, 'error', 'Bitte Telefonnummer angeben.'); return; }
-            if (!email)   { showMsg(msg, 'error', 'Bitte E-Mail-Adresse angeben.'); return; }
-            payload.customerName     = name;
-            payload.customerPhone    = phone;
-            payload.customerEmail    = email;
-            payload.deliveryAddress  = address;
-            payload.guestNote        = note;
+            if (address) payload.deliveryAddress = address;
         }
 
         submitBtn.disabled = true;

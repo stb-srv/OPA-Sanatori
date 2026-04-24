@@ -105,6 +105,7 @@ function validatePickupTime(pickupTime, openStatus) {
     if (!pickupTime || typeof pickupTime !== 'string') {
         return { valid: false, reason: 'Bitte eine Abholzeit angeben.' };
     }
+    if (pickupTime === 'sofort') return { valid: true };
     if (!/^([0-1]?\d|2[0-3]):[0-5]\d$/.test(pickupTime)) {
         return { valid: false, reason: 'Ungültiges Zeitformat für Abholzeit (HH:MM erwartet).' };
     }
@@ -184,7 +185,16 @@ module.exports = function cartRoutes(requireLicense, io) {
                 minPickupTime,
                 maxPickupTime,
                 orderCutoffMinutes: openStatus.cutoff,
-                pickupLeadMinutes:  openStatus.lead
+                pickupLeadMinutes:  openStatus.lead,
+
+                // New Slot Fields
+                timeSlotMode:    orderConfig.timeSlotMode || "slots",
+                timeSlotLead:    orderConfig.timeSlotLead ?? 20,
+                timeSlotStep:    orderConfig.timeSlotStep || 15,
+                openTime:       orderConfig.openTime     || "11:00",
+                closeTime:      orderConfig.closeTime    || "22:00",
+                sofortEnabled:   orderConfig.sofortEnabled !== false,
+                sofortLabel:    orderConfig.sofortLabel  || "So schnell wie möglich (ca. {min} Min.)"
             });
         } catch (e) {
             console.error('❌ cart/config error:', e.message);

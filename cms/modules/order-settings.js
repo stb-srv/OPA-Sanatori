@@ -151,7 +151,7 @@ export async function initOrderSettings(container, api, license) {
 
             <!-- Mindest-Vorlaufzeit -->
             <div style="display:flex; align-items:center; justify-content:space-between;
-                        gap:20px; padding:12px 0;">
+                        gap:20px; padding:12px 0; border-bottom:1px solid rgba(0,0,0,.05);">
                 <div>
                     <div style="font-weight:700; font-size:.88rem;">🚗 Mindest-Vorlaufzeit Abholung</div>
                     <div style="font-size:.75rem; color:var(--text-muted); margin-top:2px;">
@@ -167,6 +167,65 @@ export async function initOrderSettings(container, api, license) {
                                   border:1px solid rgba(0,0,0,.15); background:var(--bg,#fff);
                                   font-size:.9rem; font-weight:700; text-align:center; color:var(--text,#1b3a5c);">
                     <span style="font-size:.82rem; color:var(--text-muted);">Min.</span>
+                </div>
+            </div>
+
+            <!-- NEU: Slot-System Einstellungen -->
+            <div style="padding:16px 0; border-bottom:1px solid rgba(0,0,0,.05);">
+                <div style="font-weight:700; font-size:.88rem; margin-bottom:12px;">📅 Zeitauswahl-Modus</div>
+                <select id="os-timeSlotMode" class="form-input" style="margin-bottom:12px;">
+                    <option value="slots" ${orderConfig.timeSlotMode === 'slots' ? 'selected' : ''}>Zeitslots (empfohlen)</option>
+                    <option value="free" ${orderConfig.timeSlotMode === 'free' ? 'selected' : ''}>Freie Eingabe (alt)</option>
+                </select>
+            </div>
+
+            <div id="os-slot-settings" style="${orderConfig.timeSlotMode === 'free' ? 'display:none;' : ''}">
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:20px; padding:12px 0; border-bottom:1px solid rgba(0,0,0,.05);">
+                    <div>
+                        <div style="font-weight:700; font-size:.88rem;">⏱️ Vorlaufzeit (Slots)</div>
+                        <div style="font-size:.75rem; color:var(--text-muted); margin-top:2px;">Erster verfügbarer Slot ab "jetzt + X Min"</div>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
+                        <input type="number" id="os-timeSlotLead" value="${intVal('timeSlotLead', 20)}" style="width:70px;" class="form-input">
+                        <span style="font-size:.82rem; color:var(--text-muted);">Min.</span>
+                    </div>
+                </div>
+
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:20px; padding:12px 0; border-bottom:1px solid rgba(0,0,0,.05);">
+                    <div>
+                        <div style="font-weight:700; font-size:.88rem;">📏 Slot-Abstand</div>
+                        <div style="font-size:.75rem; color:var(--text-muted); margin-top:2px;">Intervall zwischen den Uhrzeiten</div>
+                    </div>
+                    <select id="os-timeSlotStep" class="form-input" style="width:100px;">
+                        <option value="10" ${intVal('timeSlotStep', 15) === 10 ? 'selected' : ''}>10 Min</option>
+                        <option value="15" ${intVal('timeSlotStep', 15) === 15 ? 'selected' : ''}>15 Min</option>
+                        <option value="20" ${intVal('timeSlotStep', 15) === 20 ? 'selected' : ''}>20 Min</option>
+                        <option value="30" ${intVal('timeSlotStep', 15) === 30 ? 'selected' : ''}>30 Min</option>
+                    </select>
+                </div>
+
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:20px; padding:12px 0; border-bottom:1px solid rgba(0,0,0,.05);">
+                    <div>
+                        <div style="font-weight:700; font-size:.88rem;">🌅 Öffnet um / 🌌 Letzte Bestellung</div>
+                        <div style="font-size:.75rem; color:var(--text-muted); margin-top:2px;">Zeitbereich für die Slot-Generierung</div>
+                    </div>
+                    <div style="display:flex; gap:8px;">
+                        <input type="time" id="os-openTime" value="${orderConfig.openTime || '11:00'}" class="form-input" style="width:100px;">
+                        <input type="time" id="os-closeTime" value="${orderConfig.closeTime || '22:00'}" class="form-input" style="width:100px;">
+                    </div>
+                </div>
+
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:20px; padding:12px 0; border-bottom:1px solid rgba(0,0,0,.05);">
+                    <div>
+                        <div style="font-weight:700; font-size:.88rem;">⚡ "Sofort"-Option aktiv</div>
+                        <div style="font-size:.75rem; color:var(--text-muted); margin-top:2px;">Ermöglicht Bestellung ohne fixen Zeitslot</div>
+                    </div>
+                    <label class="switch"><input type="checkbox" id="os-sofortEnabled" ${checked('sofortEnabled', true)}><span class="slider"></span></label>
+                </div>
+
+                <div style="padding:12px 0;">
+                    <div style="font-weight:700; font-size:.88rem; margin-bottom:8px;">📝 Sofort-Label Text</div>
+                    <input type="text" id="os-sofortLabel" value="${escHtml(orderConfig.sofortLabel || 'So schnell wie möglich (ca. {min} Min.)')}" class="form-input" placeholder="Platzhalter {min} möglich">
                 </div>
             </div>
         </div>
@@ -238,6 +297,12 @@ export async function initOrderSettings(container, api, license) {
     globalToggle.addEventListener('change', updateModesState);
     updateModesState();
 
+    const timeSlotModeSelect = container.querySelector('#os-timeSlotMode');
+    const slotSettingsBox = container.querySelector('#os-slot-settings');
+    timeSlotModeSelect.addEventListener('change', () => {
+        slotSettingsBox.style.display = timeSlotModeSelect.value === 'slots' ? 'block' : 'none';
+    });
+
     container.querySelector('#os-save').addEventListener('click', async () => {
         const feedback   = container.querySelector('#os-feedback');
         const cutoffRaw  = parseInt(container.querySelector('#os-cutoffMinutes').value, 10);
@@ -249,6 +314,15 @@ export async function initOrderSettings(container, api, license) {
             deliveryEnabled:     container.querySelector('#os-deliveryEnabled').checked,
             orderCutoffMinutes:  isNaN(cutoffRaw) ? 30 : Math.max(0, Math.min(120, cutoffRaw)),
             pickupLeadMinutes:   isNaN(leadRaw)   ?  5 : Math.max(0, Math.min(60,  leadRaw)),
+
+            // New Slot Fields
+            timeSlotMode:    container.querySelector('#os-timeSlotMode').value,
+            timeSlotLead:    parseInt(container.querySelector('#os-timeSlotLead').value, 10) || 0,
+            timeSlotStep:    parseInt(container.querySelector('#os-timeSlotStep').value, 10) || 15,
+            openTime:       container.querySelector('#os-openTime').value,
+            closeTime:      container.querySelector('#os-closeTime').value,
+            sofortEnabled:   container.querySelector('#os-sofortEnabled').checked,
+            sofortLabel:    container.querySelector('#os-sofortLabel').value
         };
         try {
             await api.post('settings', { orderConfig: newConfig });
