@@ -3,6 +3,7 @@
  */
 
 import { apiGet, apiPost } from './api.js';
+import { renderOnboardingWidget } from './onboarding.js';
 import { showToast } from './utils.js';
 
 const DEFAULT_WIDGETS = [
@@ -183,6 +184,8 @@ let dragOffsetY = 0;
 export async function renderDashboard(container, titleEl, toolbarEl) {
     toolbarEl.style.display = 'flex';
     titleEl.innerHTML = '<i class="fas fa-th-large"></i> Dashboard';
+
+    renderOnboardingWidget(container);
 
     window.toggleSortMode      = toggleSortMode;
     window.customizeDashboard  = customizeDashboard;
