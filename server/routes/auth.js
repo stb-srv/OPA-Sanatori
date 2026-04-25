@@ -33,16 +33,20 @@ module.exports = (ADMIN_SECRET) => {
         try {
             const { user, pass } = req.body;
             const users = await DB.getUsers();
+            const DUMMY_HASH = '$2a$10$abcdefghijklmnopqrstuuVGqzxVBBTvbPW8YtaRCfcHPp8yQb5au';
             const u = (users || []).find(x => x.user === user);
-            if (!u) return res.status(401).json({ success: false, reason: 'Benutzername oder Passwort falsch.' });
+            const hashToCompare = u?.pass || DUMMY_HASH;
+            
             let isValid = false;
-            try { isValid = await bcrypt.compare(pass, u.pass); } catch(e) { isValid = false; }
-            if (isValid) {
-                const requirePasswordChange = !!u.require_password_change;
-                const token = jwt.sign({ user: u.user, role: u.role, requirePasswordChange }, ADMIN_SECRET, { expiresIn: '12h' });
-                return res.json({ success: true, token, user: { ...u, pass: undefined }, requirePasswordChange });
+            try { isValid = await bcrypt.compare(pass, hashToCompare); } catch(e) { isValid = false; }
+
+            if (!u || !isValid) {
+                return res.status(401).json({ success: false, reason: 'Benutzername oder Passwort falsch.' });
             }
-            res.status(401).json({ success: false, reason: 'Benutzername oder Passwort falsch.' });
+
+            const requirePasswordChange = !!u.require_password_change;
+            const token = jwt.sign({ user: u.user, role: u.role, requirePasswordChange }, ADMIN_SECRET, { expiresIn: '12h' });
+            return res.json({ success: true, token, user: { ...u, pass: undefined }, requirePasswordChange });
         } catch(e) { res.status(500).json({ success: false, reason: e.message }); }
     });
 
