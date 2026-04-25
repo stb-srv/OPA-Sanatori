@@ -89,7 +89,7 @@ async function initSchema() {
         `);
         await conn.query(`
             CREATE TABLE IF NOT EXISTS reservations (
-                id              BIGINT PRIMARY KEY,
+                id              VARCHAR(100) PRIMARY KEY,
                 token           VARCHAR(100) UNIQUE,
                 name            TEXT,
                 email           TEXT,

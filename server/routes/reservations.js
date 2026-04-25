@@ -80,7 +80,7 @@ module.exports = (requireAuth, requireLicense) => {
             if (email && !emailRegex.test(email)) return res.status(400).json({ success: false, reason: 'Bitte geben Sie eine gültige E-Mail-Adresse ein.' });
             const status = result.success ? 'Pending' : 'Inquiry';
             const newRes = {
-                id: Date.now(), token: crypto.randomBytes(32).toString('hex'),
+                id: crypto.randomUUID(), token: crypto.randomBytes(32).toString('hex'),
                 name, email, phone, date, time: time + ' Uhr', start_time: time,
                 end_time: result.endTime || buildEndTime(time, duration),
                 guests, note: note || '', status,
@@ -109,7 +109,7 @@ module.exports = (requireAuth, requireLicense) => {
     router.put('/:id', requireAuth, async (req, res) => {
         try {
             const settings = await DB.getKV('settings', {});
-            const resId = parseInt(req.params.id);
+            const resId = req.params.id;
             const dbRes = await DB.getReservations();
             const old = dbRes.find(r => r.id === resId);
             if (!old) return res.status(404).json({ success: false });
@@ -134,7 +134,7 @@ module.exports = (requireAuth, requireLicense) => {
     });
 
     router.delete('/:id', requireAuth, async (req, res) => {
-        try { await DB.deleteReservation(parseInt(req.params.id)); res.json({ success: true }); }
+        try { await DB.deleteReservation(req.params.id); res.json({ success: true }); }
         catch(e) { res.status(500).json({ success: false, reason: e.message }); }
     });
 

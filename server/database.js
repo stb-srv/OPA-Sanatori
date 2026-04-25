@@ -73,7 +73,7 @@ if (dbType === 'mysql' || dbType === 'mariadb') {
         );
 
         CREATE TABLE IF NOT EXISTS reservations (
-            id              INTEGER PRIMARY KEY,
+            id              TEXT PRIMARY KEY,
             token           TEXT UNIQUE,
             name            TEXT,
             email           TEXT,
