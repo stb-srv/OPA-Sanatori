@@ -191,7 +191,8 @@ module.exports = (requireAuth, DB) => {
             if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
             const results = predictions.map(pred => {
-                const ext = (pred.mimeType || 'image/png').split('/')[1] || 'png';
+                const ALLOWED_EXTS = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
+                const ext = ALLOWED_EXTS[pred.mimeType] || 'png';
                 const filename = `ai_${crypto.randomBytes(8).toString('hex')}.${ext}`;
                 const filepath = path.join(uploadsDir, filename);
                 fs.writeFileSync(filepath, Buffer.from(pred.bytesBase64Encoded, 'base64'));
