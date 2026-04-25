@@ -54,11 +54,15 @@ module.exports = (ADMIN_SECRET) => {
             if (!u || !u.email) {
                 return res.json({ success: true, message: 'Falls ein Konto mit diesem Benutzernamen und einer hinterlegten E-Mail existiert, wird eine E-Mail versendet.' });
             }
-            // BUG-04: Timing-sicherer Vergleich für den Reset-Token (wird per Mail versendet)
-            const plainPass = crypto.randomBytes(5).toString('hex');
+            // Temporäres Passwort mit höherer Entropie (24 Zeichen)
+            const plainPass = crypto.randomBytes(12).toString('hex');
             const hashed   = await bcrypt.hash(plainPass, 10);
+            
+            // Setzt Passwort und markiert require_password_change = 1
             await DB.setUserPass(u.user, hashed, true);
             await Mailer.sendUserCredentials(u.email, u.name || u.user, u.user, plainPass, DB);
+            
+            logger.info({ user: u.user }, 'Temporäres Passwort versendet. Passwort-Änderung beim nächsten Login ist obligatorisch.');
             res.json({ success: true, message: 'Falls ein Konto mit diesem Benutzernamen und einer hinterlegten E-Mail existiert, wird eine E-Mail versendet.' });
         } catch (e) {
             logger.error({ err: e }, 'Forgot-password Mailer-Fehler');
