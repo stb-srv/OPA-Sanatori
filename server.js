@@ -189,8 +189,8 @@ app.post('/api/setup', async (req, res) => {
     try {
         const { restaurantName, licenseServer, adminSecret, smtp, adminUser, adminPass, adminEmail } = req.body;
 
-        if (adminPass && adminPass.length < 12) {
-            return res.status(400).json({ success: false, reason: 'Admin-Passwort muss mindestens 12 Zeichen lang sein.' });
+        if (!adminPass || adminPass.length < 12) {
+            return res.status(400).json({ success: false, reason: 'Admin-Passwort ist erforderlich und muss mindestens 12 Zeichen lang sein.' });
         }
         const licenseServerUrl = (licenseServer || 'https://licens-prod.stb-srv.de').replace(/\/+$/, '');
         const trialPlan = PLAN_DEFINITIONS['FREE'];
@@ -213,8 +213,7 @@ app.post('/api/setup', async (req, res) => {
         await DB.setKV('settings', settings);
         if (restaurantName) { const b = await DB.getKV('branding', {}); b.name = restaurantName; await DB.setKV('branding', b); }
         const finalAdminUser = adminUser || 'admin';
-        const finalAdminPass = adminPass || 'admin';
-        const hash = await bcrypt.hash(finalAdminPass, 10);
+        const hash = await bcrypt.hash(adminPass, 10);
         const plainRecoveryCodes = [], hashedCodes = [];
         const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
         for (let i = 0; i < 3; i++) {
