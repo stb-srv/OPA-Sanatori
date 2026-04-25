@@ -13,6 +13,7 @@ const fs = require('fs');
 const multer = require('multer');
 const crypto = require('crypto');
 const logger = require('../logger.js');
+const { fileTypeFromBuffer } = require('file-type');
 
 // Erlaubte Dateierweiterungen (SVG bewusst ausgeschlossen – XSS-Risiko)
 const ALLOWED_EXTENSIONS = /\.(jpg|jpeg|png|gif|webp)$/i;
@@ -56,7 +57,7 @@ module.exports = (requireAuth, UPLOADS_DIR) => {
     });
 
     router.post('/', requireAuth, (req, res) => {
-        upload.single('image')(req, res, (err) => {
+        upload.single('image')(req, res, async (err) => {
             if (err) {
                 if (err.code === 'LIMIT_FILE_SIZE') {
                     return res.status(413).json({ 
@@ -75,6 +76,20 @@ module.exports = (requireAuth, UPLOADS_DIR) => {
                     reason: 'Keine Datei hochgeladen.' 
                 });
             }
+
+            // Magic-Byte-Prüfung (serverseitig)
+            try {
+                const buffer = fs.readFileSync(req.file.path);
+                const type = await fileTypeFromBuffer(buffer);
+                if (!type || !ALLOWED_MIMETYPES.includes(type.mime)) {
+                    if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+                    return res.status(400).json({ success: false, reason: 'Ungültiger Dateityp (Magic Bytes).' });
+                }
+            } catch (checkErr) {
+                if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+                return res.status(500).json({ success: false, reason: 'Fehler bei der Dateiprüfung.' });
+            }
+
             res.json({
                 success:  true,
                 url:      `/uploads/${req.file.filename}`,
