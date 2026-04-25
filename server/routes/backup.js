@@ -110,13 +110,21 @@ module.exports = (requireAuth) => {
 
             const results = { restored: {}, errors: [] };
 
-            // 1. KV-Store wiederherstellen
+            // 1. KV-Store wiederherstellen (mit Whitelist gegen Manipulation von z.B. license)
             if (data.kv && typeof data.kv === 'object') {
+                const ALLOWED_KV_KEYS = new Set([
+                    'settings','homepage','visuals','allergens',
+                    'additives','orderConfig','tables','openingHours','branding','reservationConfig'
+                ]);
                 for (const [key, value] of Object.entries(data.kv)) {
+                    if (!ALLOWED_KV_KEYS.has(key)) {
+                        results.errors.push(`kv[${key}]: Nicht erlaubter Key – übersprungen.`);
+                        continue;
+                    }
                     try { await DB.setKV(key, value); } 
                     catch (e) { results.errors.push(`kv[${key}]: ${e.message}`); }
                 }
-                results.restored.kv = Object.keys(data.kv).length;
+                results.restored.kv = Object.keys(data.kv).filter(k => ALLOWED_KV_KEYS.has(k)).length;
             }
 
             // 2. Kategorien wiederherstellen
